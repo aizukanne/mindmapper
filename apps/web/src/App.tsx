@@ -7,7 +7,9 @@ import SignIn from './pages/auth/SignIn';
 import SignUp from './pages/auth/SignUp';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
-function AppContent() {
+const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+function AppContentWithAuth() {
   const { isLoaded } = useAuth();
 
   // Show loading while Clerk initializes
@@ -54,11 +56,27 @@ function AppContent() {
   );
 }
 
+// Content without auth - direct access
+function AppContentWithoutAuth() {
+  return (
+    <div className="h-screen w-screen overflow-hidden">
+      <Routes>
+        {/* Direct access to all routes when auth is disabled */}
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/map/:mapId" element={<MapEditor />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
+  );
+}
+
 // Wrapper that handles case when Clerk is not configured
 function App() {
   return (
     <ReactFlowProvider>
-      <AppContent />
+      {CLERK_ENABLED ? <AppContentWithAuth /> : <AppContentWithoutAuth />}
     </ReactFlowProvider>
   );
 }
