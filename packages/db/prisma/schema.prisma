@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// User Management
+// ==========================================
+
+model User {
+  id          String   @id @default(cuid())
+  clerkId     String   @unique
+  email       String   @unique
+  name        String?
+  avatarUrl   String?
+  preferences Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  mindMaps MindMap[]
+  folders  Folder[]
+  comments Comment[]
+
+  @@index([clerkId])
+  @@index([email])
+}
+
+// ==========================================
+// Organization
+// ==========================================
+
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  parent   Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[]  @relation("FolderHierarchy")
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mindMaps MindMap[]
+
+  @@index([userId])
+  @@index([parentId])
+}
+
+// ==========================================
+// Mind Map
+// ==========================================
+
+model MindMap {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  thumbnail   String?
+  isPublic    Boolean  @default(false)
+  isFavorite  Boolean  @default(false)
+  isArchived  Boolean  @default(false)
+  settings    Json     @default("{}")
+  userId      String
+  folderId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder      Folder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  nodes       Node[]
+  connections Connection[]
+  events      MapEvent[]
+  shares      Share[]
+  comments    Comment[]
+
+  @@index([userId])
+  @@index([folderId])
+  @@index([isPublic])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+// ==========================================
+// Nodes
+// ==========================================
+
+enum NodeType {
+  ROOT
+  CHILD
+  FLOATING
+}
+
+model Node {
+  id          String   @id @default(cuid())
+  mindMapId   String
+  parentId    String?
+  type        NodeType @default(CHILD)
+  text        String
+  positionX   Float
+  positionY   Float
+  width       Float    @default(150)
+  height      Float    @default(50)
+  style       Json     @default("{}")
+  metadata    Json     @default("{}")
+  sortOrder   Int      @default(0)
+  isCollapsed Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  mindMap  MindMap      @relation(fields: [mindMapId], references: [id], onDelete: Cascade)
+  parent   Node?        @relation("NodeHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Node[]       @relation("NodeHierarchy")
+  outgoing Connection[] @relation("SourceNode")
+  incoming Connection[] @relation("TargetNode")
+  comments Comment[]
+
+  @@index([mindMapId])
+  @@index([parentId])
+  @@index([mindMapId, parentId])
+}
+
+// ==========================================
+// Connections
+// ==========================================
+
+enum ConnectionType {
+  HIERARCHICAL
+  CROSS_LINK
+}
+
+model Connection {
+  id           String         @id @default(cuid())
+  mindMapId    String
+  sourceNodeId String
+  targetNodeId String
+  type         ConnectionType @default(HIERARCHICAL)
+  label        String?
+  style        Json           @default("{}")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Relations
+  mindMap    MindMap @relation(fields: [mindMapId], references: [id], onDelete: Cascade)
+  sourceNode Node    @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode Node    @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNodeId, targetNodeId])
+  @@index([mindMapId])
+  @@index([sourceNodeId])
+  @@index([targetNodeId])
+}
+
+// ==========================================
+// Sharing
+// ==========================================
+
+enum Permission {
+  OWNER
+  EDITOR
+  COMMENTER
+  VIEWER
+}
+
+model Share {
+  id         String      @id @default(cuid())
+  mindMapId  String
+  userId     String?
+  shareToken String?     @unique
+  permission Permission  @default(VIEWER)
+  password   String?
+  expiresAt  DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  // Relations
+  mindMap MindMap @relation(fields: [mindMapId], references: [id], onDelete: Cascade)
+
+  @@index([mindMapId])
+  @@index([userId])
+  @@index([shareToken])
+}
+
+// ==========================================
+// Comments
+// ==========================================
+
+model Comment {
+  id        String   @id @default(cuid())
+  mindMapId String
+  nodeId    String?
+  userId    String
+  text      String
+  resolved  Boolean  @default(false)
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  mindMap MindMap   @relation(fields: [mindMapId], references: [id], onDelete: Cascade)
+  node    Node?     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentThread")
+
+  @@index([mindMapId])
+  @@index([nodeId])
+  @@index([userId])
+  @@index([parentId])
+}
+
+// ==========================================
+// Event History (Event Sourcing)
+// ==========================================
+
+model MapEvent {
+  id            String   @id @default(cuid())
+  mindMapId     String
+  userId        String
+  eventType     String
+  entityType    String
+  entityId      String
+  previousState Json?
+  newState      Json?
+  createdAt     DateTime @default(now())
+
+  // Relations
+  mindMap MindMap @relation(fields: [mindMapId], references: [id], onDelete: Cascade)
+
+  @@index([mindMapId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([mindMapId, createdAt])
+}
+
+// ==========================================
+// Templates
+// ==========================================
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  thumbnail   String?
+  category    String
+  data        Json
+  isPublic    Boolean  @default(true)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isPublic])
+  @@index([createdBy])
+}
