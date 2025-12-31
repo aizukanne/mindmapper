@@ -68,14 +68,15 @@ setupYjsServer(wss);
 
 // Start server
 const PORT = process.env.API_PORT || 3001;
+const HOST = process.env.API_HOST || '0.0.0.0';
 
 async function start() {
   // Connect to Redis (optional - app works without it in dev)
   await connectRedis();
 
-  server.listen(PORT, () => {
-    console.log(`🚀 API server running on http://localhost:${PORT}`);
-    console.log(`🔌 WebSocket server running on ws://localhost:${PORT}/yjs`);
+  server.listen(PORT, HOST, () => {
+    console.log(`🚀 API server running on http://${HOST}:${PORT}`);
+    console.log(`🔌 WebSocket server running on ws://${HOST}:${PORT}/yjs`);
   });
 }
 
