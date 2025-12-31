@@ -57,9 +57,44 @@ A powerful, collaborative web-based mind mapping application with real-time mult
 ### Prerequisites
 
 - Node.js 18+ (20+ recommended)
-- pnpm 8+
+- pnpm 8+ (package manager)
 - Docker & Docker Compose (for PostgreSQL and Redis)
 - Git
+
+### Installing pnpm
+
+If you don't have pnpm installed, you can install it using one of these methods:
+
+**Using npm (comes with Node.js):**
+```bash
+npm install -g pnpm
+```
+
+**Using Homebrew (macOS):**
+```bash
+brew install pnpm
+```
+
+**Using the standalone script (Linux/macOS):**
+```bash
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+```
+
+**Using PowerShell (Windows):**
+```powershell
+iwr https://get.pnpm.io/install.ps1 -useb | iex
+```
+
+**Using Corepack (Node.js 16.13+):**
+```bash
+corepack enable
+corepack prepare pnpm@latest --activate
+```
+
+Verify installation:
+```bash
+pnpm --version
+```
 
 ### Installation from GitHub
 
