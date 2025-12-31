@@ -7,10 +7,6 @@ import './index.css';
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-console.log('DEBUG: All VITE env vars:', import.meta.env);
-console.log('DEBUG: CLERK_PUBLISHABLE_KEY value:', CLERK_PUBLISHABLE_KEY);
-console.log('DEBUG: CLERK_PUBLISHABLE_KEY type:', typeof CLERK_PUBLISHABLE_KEY);
-
 if (!CLERK_PUBLISHABLE_KEY) {
   console.warn('Missing VITE_CLERK_PUBLISHABLE_KEY - auth will be disabled');
 }
