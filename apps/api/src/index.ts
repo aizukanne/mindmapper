@@ -1,3 +1,12 @@
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Load .env from root directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '../../../.env') });
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -67,7 +76,7 @@ const wss = new WebSocketServer({ server, path: '/yjs' });
 setupYjsServer(wss);
 
 // Start server
-const PORT = process.env.API_PORT || 3001;
+const PORT = Number(process.env.API_PORT) || 3001;
 const HOST = process.env.API_HOST || '0.0.0.0';
 
 async function start() {
