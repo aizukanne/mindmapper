@@ -22,9 +22,21 @@ model User {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  mindMaps MindMap[]
-  folders  Folder[]
-  comments Comment[]
+  mindMaps              MindMap[]
+  folders               Folder[]
+  comments              Comment[]
+  familyTrees           FamilyTree[]
+  treeMembers           TreeMember[]
+  sentInvitations       TreeInvitation[] @relation("SentInvitations")
+  acceptedInvitations   TreeInvitation[] @relation("AcceptedInvitations")
+  uploadedPhotos        TreePhoto[]
+  suggestionsMade       Suggestion[]     @relation("SuggestionsMade")
+  suggestionsReviewed   Suggestion[]     @relation("SuggestionsReviewed")
+  uploadedDocuments     SourceDocument[] @relation("UploadedDocuments")
+  reviewedDocuments     SourceDocument[] @relation("ReviewedDocuments")
+  authoredStories       FamilyStory[]    @relation("AuthoredStories")
+  storyComments         StoryComment[]   @relation("StoryComments")
+  likedStories          StoryLike[]      @relation("LikedStories")
 
   @@index([clerkId])
   @@index([email])
@@ -258,4 +270,492 @@ model Template {
   @@index([category])
   @@index([isPublic])
   @@index([createdBy])
+}
+
+// ==========================================
+// Family Tree
+// ==========================================
+
+enum TreePrivacy {
+  PRIVATE
+  FAMILY_ONLY
+  PUBLIC
+}
+
+enum TreeRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+enum PersonPrivacy {
+  PUBLIC
+  FAMILY_ONLY
+  PRIVATE
+}
+
+enum PhotoPrivacy {
+  PUBLIC
+  ALL_FAMILY
+  DIRECT_RELATIVES
+  ADMINS_ONLY
+  PRIVATE
+  NONE
+}
+
+enum RelationshipType {
+  PARENT
+  CHILD
+  SPOUSE
+  SIBLING
+  ADOPTIVE_PARENT
+  ADOPTIVE_CHILD
+  STEP_PARENT
+  STEP_CHILD
+  FOSTER_PARENT
+  FOSTER_CHILD
+  GUARDIAN
+  WARD
+}
+
+enum DocumentType {
+  BIRTH_CERTIFICATE
+  DEATH_CERTIFICATE
+  MARRIAGE_CERTIFICATE
+  DIVORCE_DECREE
+  CENSUS_RECORD
+  MILITARY_RECORD
+  IMMIGRATION_RECORD
+  NEWSPAPER_ARTICLE
+  PHOTO
+  LETTER
+  WILL
+  DEED
+  OTHER
+}
+
+model FamilyTree {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  privacy     TreePrivacy  @default(PRIVATE)
+  createdBy   String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  creator       User            @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  members       TreeMember[]
+  people        Person[]
+  relationships Relationship[]
+  marriages     Marriage[]
+  invitations   TreeInvitation[]
+  photos        TreePhoto[]
+  documents     SourceDocument[]
+  stories       FamilyStory[]
+  suggestions   Suggestion[]
+
+  @@index([createdBy])
+  @@index([privacy])
+  @@index([createdAt])
+}
+
+model TreeMember {
+  id             String    @id @default(cuid())
+  treeId         String
+  userId         String
+  role           TreeRole  @default(VIEWER)
+  linkedPersonId String?   @unique // The person in the tree that this user represents (for "Find Me")
+  joinedAt       DateTime  @default(now())
+
+  // Relations
+  tree         FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedPerson Person?    @relation("LinkedTreeMember", fields: [linkedPersonId], references: [id], onDelete: SetNull)
+
+  @@unique([treeId, userId])
+  @@index([treeId])
+  @@index([userId])
+}
+
+model Person {
+  id            String         @id @default(cuid())
+  treeId        String
+  firstName     String
+  middleName    String?
+  lastName      String
+  maidenName    String?
+  suffix        String?
+  nickname      String?
+  gender        Gender         @default(UNKNOWN)
+  birthDate     DateTime?
+  birthPlace    String?
+  deathDate     DateTime?
+  deathPlace    String?
+  isLiving      Boolean        @default(true)
+  biography     String?
+  occupation    String?
+  education     String?
+  privacy       PersonPrivacy  @default(PUBLIC)
+  profilePhoto  String?
+  positionX     Float?
+  positionY     Float?
+  generation    Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  tree                FamilyTree       @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  relationshipsFrom   Relationship[]   @relation("PersonFrom")
+  relationshipsTo     Relationship[]   @relation("PersonTo")
+  marriages           Marriage[]       @relation("MarriagePerson")
+  photos              TreePhoto[]
+  photoTags           PhotoTag[]       // Photos this person is tagged in
+  documents           SourceDocument[]
+  documentLinks       DocumentPerson[] // Documents this person is linked to
+  stories             FamilyStory[]
+  storyLinks          StoryPerson[]    // Stories this person is linked to
+  linkedMember        TreeMember?      @relation("LinkedTreeMember")
+  suggestions         Suggestion[]
+
+  @@index([treeId])
+  @@index([treeId, generation])
+  @@index([lastName])
+  @@index([privacy])
+}
+
+model Relationship {
+  id               String           @id @default(cuid())
+  treeId           String
+  personFromId     String
+  personToId       String
+  relationshipType RelationshipType
+  notes            String?
+  birthOrder       Int?             // For CHILD and SIBLING relationships, indicates birth order (1 = oldest)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Relations
+  tree       FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  personFrom Person     @relation("PersonFrom", fields: [personFromId], references: [id], onDelete: Cascade)
+  personTo   Person     @relation("PersonTo", fields: [personToId], references: [id], onDelete: Cascade)
+
+  @@unique([personFromId, personToId, relationshipType])
+  @@index([treeId])
+  @@index([personFromId])
+  @@index([personToId])
+}
+
+model Marriage {
+  id            String    @id @default(cuid())
+  treeId        String
+  marriageDate  DateTime?
+  marriagePlace String?
+  divorceDate   DateTime?
+  divorcePlace  String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  tree    FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  spouses Person[]   @relation("MarriagePerson")
+
+  @@index([treeId])
+}
+
+model TreeInvitation {
+  id         String             @id @default(cuid())
+  treeId     String
+  email      String
+  role       TreeRole           @default(VIEWER)
+  inviteCode String             @unique
+  status     InvitationStatus   @default(PENDING)
+  expiresAt  DateTime?
+  createdAt  DateTime           @default(now())
+  acceptedAt DateTime?
+  acceptedBy String?
+  invitedBy  String
+
+  // Relations
+  tree     FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  inviter  User       @relation("SentInvitations", fields: [invitedBy], references: [id], onDelete: Cascade)
+  acceptor User?      @relation("AcceptedInvitations", fields: [acceptedBy], references: [id], onDelete: SetNull)
+
+  @@index([treeId])
+  @@index([inviteCode])
+  @@index([email])
+  @@index([status])
+}
+
+model TreePhoto {
+  id          String        @id @default(cuid())
+  treeId      String
+  personId    String?       // Primary person (legacy, for backwards compatibility)
+  url         String        // Thumbnail or display URL
+  originalUrl String?       // Full resolution original URL
+  s3Key       String?       // S3 key for original image
+  thumbnailKey String?      // S3 key for thumbnail
+  width       Int?          // Original image width in pixels
+  height      Int?          // Original image height in pixels
+  fileSize    Int?          // File size in bytes
+  format      String?       // Image format (jpeg, png, etc.)
+  caption     String?
+  dateTaken   DateTime?
+  location    String?
+  privacy     PhotoPrivacy  @default(ALL_FAMILY)
+  uploadedBy  String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  tree        FamilyTree  @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  person      Person?     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  uploader    User        @relation(fields: [uploadedBy], references: [id])
+  taggedPeople PhotoTag[]  // Multiple people can be tagged in a photo
+
+  @@index([treeId])
+  @@index([personId])
+  @@index([uploadedBy])
+  @@index([privacy])
+  @@index([dateTaken])
+}
+
+// Join table for photo tagging (many-to-many)
+model PhotoTag {
+  id        String   @id @default(cuid())
+  photoId   String
+  personId  String
+  createdAt DateTime @default(now())
+
+  // Relations
+  photo  TreePhoto @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  person Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([photoId, personId])
+  @@index([photoId])
+  @@index([personId])
+}
+
+enum DocumentStatus {
+  PENDING      // Awaiting admin approval
+  APPROVED     // Approved as official record
+  REJECTED     // Rejected by admin
+  DRAFT        // Not yet submitted for approval
+}
+
+model SourceDocument {
+  id           String         @id @default(cuid())
+  treeId       String
+  personId     String?
+  title        String
+  description  String?
+  documentType DocumentType
+  url          String?        // Display/thumbnail URL
+  originalUrl  String?        // Full resolution URL
+  s3Key        String?        // S3 key for original file
+  thumbnailKey String?        // S3 key for thumbnail/preview
+  fileSize     Int?           // File size in bytes
+  mimeType     String?        // File MIME type
+  pageCount    Int?           // Number of pages (for PDFs)
+  ocrText      String?        // Extracted text for search
+  notes        String?
+  citation     String?        // Source citation
+  dateOnDocument DateTime?    // Date shown on document
+  status       DocumentStatus @default(DRAFT)
+  isOfficial   Boolean        @default(false)  // Marked as official record
+  hasWatermark Boolean        @default(false)  // Apply watermark on download
+  uploadedBy   String
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Relations
+  tree     FamilyTree       @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  person   Person?          @relation(fields: [personId], references: [id], onDelete: Cascade)
+  uploader User             @relation("UploadedDocuments", fields: [uploadedBy], references: [id])
+  reviewer User?            @relation("ReviewedDocuments", fields: [reviewedBy], references: [id])
+  linkedPersons DocumentPerson[]  // Many-to-many for documents mentioning multiple people
+
+  @@index([treeId])
+  @@index([personId])
+  @@index([documentType])
+  @@index([status])
+  @@index([uploadedBy])
+}
+
+// Join table for documents linked to multiple people
+model DocumentPerson {
+  id         String   @id @default(cuid())
+  documentId String
+  personId   String
+  role       String?  // e.g., "subject", "witness", "parent"
+  createdAt  DateTime @default(now())
+
+  document SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  person   Person         @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, personId])
+  @@index([documentId])
+  @@index([personId])
+}
+
+enum StoryStatus {
+  DRAFT           // Not yet published
+  PENDING         // Awaiting approval (for living members)
+  PUBLISHED       // Approved and visible
+  REJECTED        // Rejected by admin
+}
+
+model FamilyStory {
+  id          String      @id @default(cuid())
+  treeId      String
+  personId    String?     // Primary person (optional)
+  authorId    String      // User who wrote the story
+  title       String
+  content     String      @db.Text // Rich text content (5000 char limit enforced in API)
+  excerpt     String?     // Short preview (auto-generated or manual)
+  storyDate   DateTime?   // When the story events occurred
+  location    String?     // Where the story takes place
+  coverImage  String?     // Optional cover image URL
+  status      StoryStatus @default(DRAFT)
+  isPublic    Boolean     @default(false) // Visible to non-tree members
+  isFeatured  Boolean     @default(false) // Featured on tree homepage
+  viewCount   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  publishedAt DateTime?   // When story was published
+
+  // Relations
+  tree          FamilyTree     @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  person        Person?        @relation(fields: [personId], references: [id], onDelete: SetNull)
+  author        User           @relation("AuthoredStories", fields: [authorId], references: [id], onDelete: Cascade)
+  linkedPersons StoryPerson[]  // Many-to-many with persons
+  comments      StoryComment[]
+  likes         StoryLike[]
+
+  @@index([treeId])
+  @@index([personId])
+  @@index([authorId])
+  @@index([status])
+  @@index([isPublic])
+  @@index([isFeatured])
+}
+
+// Join table for linking stories to multiple people
+model StoryPerson {
+  id        String   @id @default(cuid())
+  storyId   String
+  personId  String
+  role      String?  // e.g., "subject", "narrator", "mentioned"
+  createdAt DateTime @default(now())
+
+  // Relations
+  story  FamilyStory @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  person Person      @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, personId])
+  @@index([storyId])
+  @@index([personId])
+}
+
+// Comments on stories
+model StoryComment {
+  id        String   @id @default(cuid())
+  storyId   String
+  authorId  String
+  content   String   @db.Text
+  parentId  String?  // For threaded replies
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  story    FamilyStory    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  author   User           @relation("StoryComments", fields: [authorId], references: [id], onDelete: Cascade)
+  parent   StoryComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  StoryComment[] @relation("CommentReplies")
+
+  @@index([storyId])
+  @@index([authorId])
+  @@index([parentId])
+}
+
+// Likes/favorites for stories
+model StoryLike {
+  id        String   @id @default(cuid())
+  storyId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  // Relations
+  story FamilyStory @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user  User        @relation("LikedStories", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, userId])
+  @@index([storyId])
+  @@index([userId])
+}
+
+// ==========================================
+// Suggested Edits
+// ==========================================
+
+enum SuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SuggestionType {
+  UPDATE_PERSON    // Edit person details
+  ADD_RELATIONSHIP // Add a relationship
+  ADD_PERSON       // Add a new person (e.g., parent)
+  CORRECT_DATE     // Date correction
+  OTHER            // Other suggestion
+}
+
+model Suggestion {
+  id            String           @id @default(cuid())
+  treeId        String
+  personId      String           // The person this suggestion is about
+  suggesterId   String           // User who made the suggestion
+  type          SuggestionType
+  status        SuggestionStatus @default(PENDING)
+  title         String           // Brief description
+  description   String?          // Detailed explanation
+  currentData   Json?            // Current values (for context)
+  suggestedData Json             // Proposed changes
+  reviewerId    String?          // Admin who reviewed
+  reviewNote    String?          // Admin's note on decision
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  reviewedAt    DateTime?
+
+  // Relations
+  tree      FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  person    Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  suggester User       @relation("SuggestionsMade", fields: [suggesterId], references: [id], onDelete: Cascade)
+  reviewer  User?      @relation("SuggestionsReviewed", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([treeId])
+  @@index([personId])
+  @@index([suggesterId])
+  @@index([status])
+  @@index([treeId, status])
 }

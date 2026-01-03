@@ -3,6 +3,9 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { useAuth } from '@clerk/clerk-react';
 import Dashboard from './pages/Dashboard';
 import MapEditor from './pages/MapEditor';
+import FamilyTreeDashboard from './pages/FamilyTreeDashboard';
+import FamilyTreeEditor from './pages/FamilyTreeEditor';
+import AcceptInvitation from './pages/AcceptInvitation';
 import SignIn from './pages/auth/SignIn';
 import SignUp from './pages/auth/SignUp';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -31,6 +34,9 @@ function AppContentWithAuth() {
         <Route path="/sign-in/*" element={<SignIn />} />
         <Route path="/sign-up/*" element={<SignUp />} />
 
+        {/* Public invitation route */}
+        <Route path="/invitations/:invitationId" element={<AcceptInvitation />} />
+
         {/* Protected routes */}
         <Route
           path="/"
@@ -48,6 +54,22 @@ function AppContentWithAuth() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/family-trees"
+          element={
+            <ProtectedRoute>
+              <FamilyTreeDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/family-tree/:treeId"
+          element={
+            <ProtectedRoute>
+              <FamilyTreeEditor />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -61,9 +83,14 @@ function AppContentWithoutAuth() {
   return (
     <div className="h-screen w-screen overflow-hidden">
       <Routes>
+        {/* Public invitation route */}
+        <Route path="/invitations/:invitationId" element={<AcceptInvitation />} />
+
         {/* Direct access to all routes when auth is disabled */}
         <Route path="/" element={<Dashboard />} />
         <Route path="/map/:mapId" element={<MapEditor />} />
+        <Route path="/family-trees" element={<FamilyTreeDashboard />} />
+        <Route path="/family-tree/:treeId" element={<FamilyTreeEditor />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

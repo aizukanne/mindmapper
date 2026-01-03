@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FolderOpen, Star, Clock, Search, FileText, Trash2, MoreHorizontal, Loader2, FolderPlus, Upload, Menu, X } from 'lucide-react';
+import { Plus, FolderOpen, Star, Clock, Search, FileText, Trash2, MoreHorizontal, Loader2, FolderPlus, Upload, Menu, X, Users } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { TemplateGallery } from '@/components/templates/TemplateGallery';
@@ -170,6 +170,14 @@ export default function Dashboard() {
             </Button>
             <Button onClick={() => setIsTemplateGalleryOpen(true)} size="icon" className="md:hidden">
               <Plus className="h-5 w-5" />
+            </Button>
+            <Button
+              onClick={() => navigate('/family-trees')}
+              variant="outline"
+              className="hidden md:flex"
+            >
+              <Users className="h-4 w-4 mr-2" />
+              Family Trees
             </Button>
             <UserMenu />
           </div>

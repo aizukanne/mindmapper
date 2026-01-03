@@ -301,3 +301,224 @@ export const PRESENCE_COLORS = [
   '#8b5cf6', // violet
   '#ec4899', // pink
 ];
+
+// ==========================================
+// Family Tree Types
+// ==========================================
+
+export type TreePrivacy = 'PRIVATE' | 'FAMILY_ONLY' | 'PUBLIC';
+export type TreeRole = 'ADMIN' | 'MEMBER' | 'VIEWER';
+export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER' | 'UNKNOWN';
+export type PersonPrivacy = 'PUBLIC' | 'FAMILY_ONLY' | 'PRIVATE';
+export type PhotoPrivacy = 'PUBLIC' | 'ALL_FAMILY' | 'DIRECT_RELATIVES' | 'ADMINS_ONLY' | 'PRIVATE' | 'NONE';
+export type RelationshipType =
+  | 'PARENT'
+  | 'CHILD'
+  | 'SPOUSE'
+  | 'SIBLING'
+  | 'ADOPTIVE_PARENT'
+  | 'ADOPTIVE_CHILD'
+  | 'STEP_PARENT'
+  | 'STEP_CHILD'
+  | 'FOSTER_PARENT'
+  | 'FOSTER_CHILD'
+  | 'GUARDIAN'
+  | 'WARD';
+export type DocumentType =
+  | 'BIRTH_CERTIFICATE'
+  | 'DEATH_CERTIFICATE'
+  | 'MARRIAGE_CERTIFICATE'
+  | 'DIVORCE_DECREE'
+  | 'CENSUS_RECORD'
+  | 'MILITARY_RECORD'
+  | 'IMMIGRATION_RECORD'
+  | 'NEWSPAPER_ARTICLE'
+  | 'PHOTO'
+  | 'LETTER'
+  | 'WILL'
+  | 'DEED'
+  | 'OTHER';
+
+export interface FamilyTree {
+  id: string;
+  name: string;
+  description?: string | null;
+  privacy: TreePrivacy;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TreeMember {
+  id: string;
+  treeId: string;
+  userId: string;
+  role: TreeRole;
+  joinedAt: Date;
+}
+
+export interface Person {
+  id: string;
+  treeId: string;
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  maidenName?: string | null;
+  suffix?: string | null;
+  nickname?: string | null;
+  gender: Gender;
+  birthDate?: Date | null;
+  birthPlace?: string | null;
+  deathDate?: Date | null;
+  deathPlace?: string | null;
+  isLiving: boolean;
+  biography?: string | null;
+  occupation?: string | null;
+  education?: string | null;
+  privacy: PersonPrivacy;
+  profilePhoto?: string | null;
+  positionX?: number | null;
+  positionY?: number | null;
+  generation: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Relationship {
+  id: string;
+  treeId: string;
+  personFromId: string;
+  personToId: string;
+  relationshipType: RelationshipType;
+  notes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Marriage {
+  id: string;
+  treeId: string;
+  marriageDate?: Date | null;
+  marriagePlace?: string | null;
+  divorceDate?: Date | null;
+  divorcePlace?: string | null;
+  notes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TreeInvitation {
+  id: string;
+  treeId: string;
+  email: string;
+  role: TreeRole;
+  inviteCode: string;
+  expiresAt: Date;
+  usedAt?: Date | null;
+  createdAt: Date;
+}
+
+export interface TreePhoto {
+  id: string;
+  treeId: string;
+  personId?: string | null;
+  url: string;
+  caption?: string | null;
+  dateTaken?: Date | null;
+  location?: string | null;
+  privacy: PhotoPrivacy;
+  uploadedBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SourceDocument {
+  id: string;
+  treeId: string;
+  personId?: string | null;
+  title: string;
+  documentType: DocumentType;
+  url?: string | null;
+  notes?: string | null;
+  citation?: string | null;
+  uploadedBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FamilyStory {
+  id: string;
+  treeId: string;
+  personId?: string | null;
+  title: string;
+  content: string;
+  storyDate?: Date | null;
+  author: string;
+  isPublic: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Family Tree API Request/Response Types
+export interface CreateFamilyTreeRequest {
+  name: string;
+  description?: string;
+  privacy?: TreePrivacy;
+}
+
+export interface CreatePersonRequest {
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  maidenName?: string;
+  suffix?: string;
+  nickname?: string;
+  gender?: Gender;
+  birthDate?: string;
+  birthPlace?: string;
+  deathDate?: string;
+  deathPlace?: string;
+  isLiving?: boolean;
+  biography?: string;
+  occupation?: string;
+  education?: string;
+  privacy?: PersonPrivacy;
+  profilePhoto?: string;
+  generation?: number;
+}
+
+export interface CreateRelationshipRequest {
+  personFromId: string;
+  personToId: string;
+  relationshipType: RelationshipType;
+  notes?: string;
+}
+
+export interface CreateMarriageRequest {
+  spouseIds: [string, string];
+  marriageDate?: string;
+  marriagePlace?: string;
+  divorceDate?: string;
+  divorcePlace?: string;
+  notes?: string;
+}
+
+export interface InviteMemberRequest {
+  email: string;
+  role: TreeRole;
+  expiresInDays?: number;
+}
+
+export interface PersonWithRelationships extends Person {
+  relationships?: Relationship[];
+  marriages?: Marriage[];
+  photos?: TreePhoto[];
+  documents?: SourceDocument[];
+  stories?: FamilyStory[];
+}
+
+export interface FamilyTreeWithMembers extends FamilyTree {
+  members?: TreeMember[];
+  people?: Person[];
+}

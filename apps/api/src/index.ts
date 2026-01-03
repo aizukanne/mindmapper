@@ -26,6 +26,7 @@ import { foldersRouter } from './routes/folders.js';
 import { searchRouter } from './routes/search.js';
 import { exportRouter } from './routes/export.js';
 import { importRouter } from './routes/import.js';
+import { familyTreesRouter } from './routes/familyTrees.js';
 import { setupYjsServer } from './yjs/server.js';
 import { connectRedis, disconnectRedis } from './lib/redis.js';
 import { flushAllPending } from './yjs/persistence.js';
@@ -67,6 +68,7 @@ app.use('/api', foldersRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/maps', exportRouter);
 app.use('/api/maps', importRouter);
+app.use('/api/family-trees', familyTreesRouter);
 
 // Error handler
 app.use(errorHandler);
