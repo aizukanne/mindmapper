@@ -16,6 +16,15 @@ import {
   isS3Configured,
   getStorageConfig,
 } from '../lib/storage.js';
+import {
+  parseGedcom,
+  validateGedcomData,
+  generateImportPreview,
+  convertGender,
+  type GedcomParseResult,
+  type GedcomIndividual,
+  type GedcomFamily,
+} from '../lib/gedcom-parser.js';
 
 // Configure multer for memory storage (files stored in buffer)
 const upload = multer({
@@ -4718,6 +4727,2452 @@ familyTreesRouter.get('/:treeId/stories/pending', async (req, res, next) => {
     res.json({
       success: true,
       data: stories,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==========================================
+// Duplicate Detection & Merge
+// ==========================================
+
+// Duplicate detection scoring algorithm
+function calculateSimilarityScore(person1: {
+  firstName: string;
+  lastName: string;
+  maidenName?: string | null;
+  birthDate?: Date | null;
+  birthPlace?: string | null;
+  deathDate?: Date | null;
+}, person2: {
+  firstName: string;
+  lastName: string;
+  maidenName?: string | null;
+  birthDate?: Date | null;
+  birthPlace?: string | null;
+  deathDate?: Date | null;
+}): { score: number; reasons: string[] } {
+  let score = 0;
+  const reasons: string[] = [];
+
+  // Normalize strings for comparison
+  const normalize = (str: string | null | undefined) => (str || '').toLowerCase().trim();
+  const levenshtein = (a: string, b: string): number => {
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const matrix: number[][] = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        matrix[i][j] = b.charAt(i - 1) === a.charAt(j - 1)
+          ? matrix[i - 1][j - 1]
+          : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+      }
+    }
+    return matrix[b.length][a.length];
+  };
+  const stringSimilarity = (a: string, b: string): number => {
+    if (!a || !b) return 0;
+    const maxLen = Math.max(a.length, b.length);
+    if (maxLen === 0) return 1;
+    return 1 - levenshtein(a, b) / maxLen;
+  };
+
+  // First name comparison (weight: 30)
+  const fn1 = normalize(person1.firstName);
+  const fn2 = normalize(person2.firstName);
+  if (fn1 === fn2) {
+    score += 30;
+    reasons.push('Exact first name match');
+  } else if (stringSimilarity(fn1, fn2) > 0.8) {
+    score += 20;
+    reasons.push('Similar first name');
+  } else if (fn1.charAt(0) === fn2.charAt(0)) {
+    score += 5;
+    reasons.push('First name initial match');
+  }
+
+  // Last name comparison (weight: 30)
+  const ln1 = normalize(person1.lastName);
+  const ln2 = normalize(person2.lastName);
+  if (ln1 === ln2) {
+    score += 30;
+    reasons.push('Exact last name match');
+  } else if (stringSimilarity(ln1, ln2) > 0.8) {
+    score += 20;
+    reasons.push('Similar last name');
+  }
+
+  // Maiden name comparison (weight: 10)
+  const mn1 = normalize(person1.maidenName);
+  const mn2 = normalize(person2.maidenName);
+  if (mn1 && mn2 && mn1 === mn2) {
+    score += 10;
+    reasons.push('Exact maiden name match');
+  } else if (mn1 && ln2 && mn1 === ln2) {
+    score += 8;
+    reasons.push('Maiden name matches other last name');
+  } else if (mn2 && ln1 && mn2 === ln1) {
+    score += 8;
+    reasons.push('Maiden name matches other last name');
+  }
+
+  // Birth date comparison (weight: 20)
+  if (person1.birthDate && person2.birthDate) {
+    const d1 = new Date(person1.birthDate);
+    const d2 = new Date(person2.birthDate);
+    const diffDays = Math.abs((d1.getTime() - d2.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) {
+      score += 20;
+      reasons.push('Exact birth date match');
+    } else if (diffDays <= 365) {
+      score += 10;
+      reasons.push('Birth year match');
+    } else if (d1.getFullYear() === d2.getFullYear()) {
+      score += 10;
+      reasons.push('Birth year match');
+    }
+  }
+
+  // Birth place comparison (weight: 10)
+  const bp1 = normalize(person1.birthPlace);
+  const bp2 = normalize(person2.birthPlace);
+  if (bp1 && bp2) {
+    if (bp1 === bp2) {
+      score += 10;
+      reasons.push('Exact birth place match');
+    } else if (bp1.includes(bp2) || bp2.includes(bp1)) {
+      score += 5;
+      reasons.push('Similar birth place');
+    }
+  }
+
+  return { score, reasons };
+}
+
+// GET /api/family-trees/:treeId/duplicates - Detect potential duplicates
+familyTreesRouter.get('/:treeId/duplicates', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const { minScore = '60' } = req.query;
+    const minScoreNum = parseInt(minScore as string, 10);
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'ADMIN');
+
+    // Get all people in the tree
+    const people = await prisma.person.findMany({
+      where: { treeId },
+      select: {
+        id: true,
+        firstName: true,
+        middleName: true,
+        lastName: true,
+        maidenName: true,
+        nickname: true,
+        gender: true,
+        birthDate: true,
+        birthPlace: true,
+        deathDate: true,
+        deathPlace: true,
+        isLiving: true,
+        profilePhoto: true,
+        generation: true,
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    // Find duplicate pairs
+    const duplicates: Array<{
+      person1: typeof people[0];
+      person2: typeof people[0];
+      score: number;
+      reasons: string[];
+    }> = [];
+
+    for (let i = 0; i < people.length; i++) {
+      for (let j = i + 1; j < people.length; j++) {
+        const { score, reasons } = calculateSimilarityScore(people[i], people[j]);
+        if (score >= minScoreNum) {
+          duplicates.push({
+            person1: people[i],
+            person2: people[j],
+            score,
+            reasons,
+          });
+        }
+      }
+    }
+
+    // Sort by score descending
+    duplicates.sort((a, b) => b.score - a.score);
+
+    res.json({
+      success: true,
+      data: {
+        duplicates,
+        total: duplicates.length,
+        minScoreUsed: minScoreNum,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/family-trees/:treeId/people/:personId/merge-preview/:targetPersonId
+// Preview what a merge would look like
+familyTreesRouter.get('/:treeId/people/:personId/merge-preview/:targetPersonId', async (req, res, next) => {
+  try {
+    const { treeId, personId, targetPersonId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'ADMIN');
+
+    // Get both persons with all their data
+    const [person1, person2] = await Promise.all([
+      prisma.person.findFirst({
+        where: { id: personId, treeId },
+        include: {
+          relationshipsFrom: { include: { personTo: { select: { id: true, firstName: true, lastName: true } } } },
+          relationshipsTo: { include: { personFrom: { select: { id: true, firstName: true, lastName: true } } } },
+          marriages: { include: { spouses: { select: { id: true, firstName: true, lastName: true } } } },
+          photos: { select: { id: true, url: true, caption: true } },
+          photoTags: { select: { id: true, photo: { select: { id: true, url: true } } } },
+          documents: { select: { id: true, title: true, documentType: true } },
+          documentLinks: { select: { id: true, document: { select: { id: true, title: true } } } },
+          stories: { select: { id: true, title: true } },
+          storyLinks: { select: { id: true, story: { select: { id: true, title: true } } } },
+          linkedMember: { select: { id: true, userId: true, user: { select: { name: true, email: true } } } },
+        },
+      }),
+      prisma.person.findFirst({
+        where: { id: targetPersonId, treeId },
+        include: {
+          relationshipsFrom: { include: { personTo: { select: { id: true, firstName: true, lastName: true } } } },
+          relationshipsTo: { include: { personFrom: { select: { id: true, firstName: true, lastName: true } } } },
+          marriages: { include: { spouses: { select: { id: true, firstName: true, lastName: true } } } },
+          photos: { select: { id: true, url: true, caption: true } },
+          photoTags: { select: { id: true, photo: { select: { id: true, url: true } } } },
+          documents: { select: { id: true, title: true, documentType: true } },
+          documentLinks: { select: { id: true, document: { select: { id: true, title: true } } } },
+          stories: { select: { id: true, title: true } },
+          storyLinks: { select: { id: true, story: { select: { id: true, title: true } } } },
+          linkedMember: { select: { id: true, userId: true, user: { select: { name: true, email: true } } } },
+        },
+      }),
+    ]);
+
+    if (!person1 || !person2) {
+      return res.status(404).json({ success: false, error: 'One or both persons not found' });
+    }
+
+    // Calculate similarity
+    const { score, reasons } = calculateSimilarityScore(person1, person2);
+
+    // Build field comparison
+    const fieldComparison = {
+      firstName: { person1: person1.firstName, person2: person2.firstName, recommended: person1.firstName },
+      middleName: { person1: person1.middleName, person2: person2.middleName, recommended: person1.middleName || person2.middleName },
+      lastName: { person1: person1.lastName, person2: person2.lastName, recommended: person1.lastName },
+      maidenName: { person1: person1.maidenName, person2: person2.maidenName, recommended: person1.maidenName || person2.maidenName },
+      nickname: { person1: person1.nickname, person2: person2.nickname, recommended: person1.nickname || person2.nickname },
+      birthDate: { person1: person1.birthDate, person2: person2.birthDate, recommended: person1.birthDate || person2.birthDate },
+      birthPlace: { person1: person1.birthPlace, person2: person2.birthPlace, recommended: person1.birthPlace || person2.birthPlace },
+      deathDate: { person1: person1.deathDate, person2: person2.deathDate, recommended: person1.deathDate || person2.deathDate },
+      deathPlace: { person1: person1.deathPlace, person2: person2.deathPlace, recommended: person1.deathPlace || person2.deathPlace },
+      biography: { person1: person1.biography, person2: person2.biography, recommended: person1.biography || person2.biography },
+      occupation: { person1: person1.occupation, person2: person2.occupation, recommended: person1.occupation || person2.occupation },
+      education: { person1: person1.education, person2: person2.education, recommended: person1.education || person2.education },
+      profilePhoto: { person1: person1.profilePhoto, person2: person2.profilePhoto, recommended: person1.profilePhoto || person2.profilePhoto },
+    };
+
+    // Count relationships and assets
+    const relationshipsSummary = {
+      person1: {
+        parents: person1.relationshipsTo.filter(r => ['PARENT', 'ADOPTIVE_PARENT', 'STEP_PARENT', 'FOSTER_PARENT', 'GUARDIAN'].includes(r.relationshipType)).length,
+        children: person1.relationshipsFrom.filter(r => ['PARENT', 'ADOPTIVE_PARENT', 'STEP_PARENT', 'FOSTER_PARENT', 'GUARDIAN'].includes(r.relationshipType)).length,
+        siblings: person1.relationshipsFrom.filter(r => r.relationshipType === 'SIBLING').length + person1.relationshipsTo.filter(r => r.relationshipType === 'SIBLING').length,
+        spouses: person1.marriages.length,
+      },
+      person2: {
+        parents: person2.relationshipsTo.filter(r => ['PARENT', 'ADOPTIVE_PARENT', 'STEP_PARENT', 'FOSTER_PARENT', 'GUARDIAN'].includes(r.relationshipType)).length,
+        children: person2.relationshipsFrom.filter(r => ['PARENT', 'ADOPTIVE_PARENT', 'STEP_PARENT', 'FOSTER_PARENT', 'GUARDIAN'].includes(r.relationshipType)).length,
+        siblings: person2.relationshipsFrom.filter(r => r.relationshipType === 'SIBLING').length + person2.relationshipsTo.filter(r => r.relationshipType === 'SIBLING').length,
+        spouses: person2.marriages.length,
+      },
+    };
+
+    const assetsSummary = {
+      person1: {
+        photos: person1.photos.length + person1.photoTags.length,
+        documents: person1.documents.length + person1.documentLinks.length,
+        stories: person1.stories.length + person1.storyLinks.length,
+      },
+      person2: {
+        photos: person2.photos.length + person2.photoTags.length,
+        documents: person2.documents.length + person2.documentLinks.length,
+        stories: person2.stories.length + person2.storyLinks.length,
+      },
+    };
+
+    // Check for linked members
+    const linkedMembers = {
+      person1: person1.linkedMember,
+      person2: person2.linkedMember,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        person1,
+        person2,
+        similarityScore: score,
+        similarityReasons: reasons,
+        fieldComparison,
+        relationshipsSummary,
+        assetsSummary,
+        linkedMembers,
+        warnings: [
+          ...(linkedMembers.person1 ? [`${person1.firstName} ${person1.lastName} is linked to user account: ${linkedMembers.person1.user.email}`] : []),
+          ...(linkedMembers.person2 ? [`${person2.firstName} ${person2.lastName} is linked to user account: ${linkedMembers.person2.user.email}`] : []),
+        ],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Merge validation schema
+const mergePersonsSchema = z.object({
+  primaryPersonId: z.string().min(1),
+  mergedPersonId: z.string().min(1),
+  fieldSelections: z.record(z.enum(['primary', 'merged'])).optional(),
+});
+
+// POST /api/family-trees/:treeId/people/merge - Merge two persons
+familyTreesRouter.post('/:treeId/people/merge', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const body = mergePersonsSchema.parse(req.body);
+    const userId = getUserId(req);
+
+    const tree = await checkTreeAccess(treeId, userId, 'ADMIN');
+    // Get member info for the current user
+    const member = tree.members[0];
+
+    const { primaryPersonId, mergedPersonId, fieldSelections = {} } = body;
+
+    if (primaryPersonId === mergedPersonId) {
+      return res.status(400).json({ success: false, error: 'Cannot merge a person with themselves' });
+    }
+
+    // Get both persons with full data
+    const [primaryPerson, mergedPerson] = await Promise.all([
+      prisma.person.findFirst({
+        where: { id: primaryPersonId, treeId },
+        include: {
+          relationshipsFrom: true,
+          relationshipsTo: true,
+          marriages: true,
+        },
+      }),
+      prisma.person.findFirst({
+        where: { id: mergedPersonId, treeId },
+        include: {
+          relationshipsFrom: true,
+          relationshipsTo: true,
+          marriages: true,
+          photos: true,
+          photoTags: true,
+          documents: true,
+          documentLinks: true,
+          stories: true,
+          storyLinks: true,
+          linkedMember: true,
+        },
+      }),
+    ]);
+
+    if (!primaryPerson || !mergedPerson) {
+      return res.status(404).json({ success: false, error: 'One or both persons not found' });
+    }
+
+    // Can't merge if merged person is linked to a user
+    if (mergedPerson.linkedMember) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot merge: the person to be removed is linked to a user account. Unlink them first.',
+      });
+    }
+
+    // Build update data based on field selections
+    const updateData: Record<string, unknown> = {};
+    const mergeableFields = [
+      'firstName', 'middleName', 'lastName', 'maidenName', 'nickname',
+      'birthDate', 'birthPlace', 'deathDate', 'deathPlace', 'isLiving',
+      'biography', 'occupation', 'education', 'profilePhoto',
+    ];
+
+    for (const field of mergeableFields) {
+      if (fieldSelections[field] === 'merged') {
+        // Use value from merged person
+        updateData[field] = (mergedPerson as Record<string, unknown>)[field];
+      } else if (fieldSelections[field] !== 'primary') {
+        // Default: use primary value, but fill in nulls from merged
+        const primaryValue = (primaryPerson as Record<string, unknown>)[field];
+        const mergedValue = (mergedPerson as Record<string, unknown>)[field];
+        if (primaryValue === null || primaryValue === undefined) {
+          updateData[field] = mergedValue;
+        }
+      }
+    }
+
+    // Calculate expiry date (30 days from now)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    // Store backup data for undo
+    const mergedPersonData = { ...mergedPerson, relationshipsFrom: undefined, relationshipsTo: undefined, marriages: undefined };
+    const transferredRelations = mergedPerson.relationshipsFrom.concat(mergedPerson.relationshipsTo);
+    const transferredMarriages = mergedPerson.marriages;
+    const transferredPhotos = mergedPerson.photos.map(p => p.id);
+    const transferredDocuments = mergedPerson.documents.map(d => d.id);
+    const transferredStories = mergedPerson.stories.map(s => s.id);
+
+    // Perform the merge in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Update primary person with selected fields
+      if (Object.keys(updateData).length > 0) {
+        await tx.person.update({
+          where: { id: primaryPersonId },
+          data: updateData,
+        });
+      }
+
+      // 2. Transfer relationships from merged person
+      // For relationships where merged person is "from"
+      for (const rel of mergedPerson.relationshipsFrom) {
+        if (rel.personToId === primaryPersonId) {
+          // Skip relationships to the primary person (would be circular)
+          await tx.relationship.delete({ where: { id: rel.id } });
+        } else {
+          // Check if this relationship already exists on primary
+          const existing = await tx.relationship.findFirst({
+            where: {
+              treeId,
+              personFromId: primaryPersonId,
+              personToId: rel.personToId,
+              relationshipType: rel.relationshipType,
+            },
+          });
+          if (!existing) {
+            // Update to point from primary person
+            await tx.relationship.update({
+              where: { id: rel.id },
+              data: { personFromId: primaryPersonId },
+            });
+          } else {
+            // Duplicate, delete
+            await tx.relationship.delete({ where: { id: rel.id } });
+          }
+        }
+      }
+
+      // For relationships where merged person is "to"
+      for (const rel of mergedPerson.relationshipsTo) {
+        if (rel.personFromId === primaryPersonId) {
+          // Skip relationships from the primary person
+          await tx.relationship.delete({ where: { id: rel.id } });
+        } else {
+          // Check if this relationship already exists on primary
+          const existing = await tx.relationship.findFirst({
+            where: {
+              treeId,
+              personFromId: rel.personFromId,
+              personToId: primaryPersonId,
+              relationshipType: rel.relationshipType,
+            },
+          });
+          if (!existing) {
+            await tx.relationship.update({
+              where: { id: rel.id },
+              data: { personToId: primaryPersonId },
+            });
+          } else {
+            await tx.relationship.delete({ where: { id: rel.id } });
+          }
+        }
+      }
+
+      // 3. Transfer marriages
+      for (const marriage of mergedPerson.marriages) {
+        // Disconnect merged person from marriage
+        await tx.marriage.update({
+          where: { id: marriage.id },
+          data: {
+            spouses: {
+              disconnect: { id: mergedPersonId },
+              connect: { id: primaryPersonId },
+            },
+          },
+        });
+      }
+
+      // 4. Transfer photos (owned by merged person)
+      await tx.treePhoto.updateMany({
+        where: { id: { in: transferredPhotos } },
+        data: { personId: primaryPersonId },
+      });
+
+      // 5. Transfer photo tags
+      for (const tag of mergedPerson.photoTags) {
+        const existingTag = await tx.photoTag.findFirst({
+          where: { photoId: tag.photoId, personId: primaryPersonId },
+        });
+        if (!existingTag) {
+          await tx.photoTag.update({
+            where: { id: tag.id },
+            data: { personId: primaryPersonId },
+          });
+        } else {
+          await tx.photoTag.delete({ where: { id: tag.id } });
+        }
+      }
+
+      // 6. Transfer documents
+      await tx.sourceDocument.updateMany({
+        where: { id: { in: transferredDocuments } },
+        data: { personId: primaryPersonId },
+      });
+
+      // 7. Transfer document links
+      for (const link of mergedPerson.documentLinks) {
+        const existingLink = await tx.documentPerson.findFirst({
+          where: { documentId: link.documentId, personId: primaryPersonId },
+        });
+        if (!existingLink) {
+          await tx.documentPerson.update({
+            where: { id: link.id },
+            data: { personId: primaryPersonId },
+          });
+        } else {
+          await tx.documentPerson.delete({ where: { id: link.id } });
+        }
+      }
+
+      // 8. Transfer stories
+      await tx.familyStory.updateMany({
+        where: { id: { in: transferredStories } },
+        data: { personId: primaryPersonId },
+      });
+
+      // 9. Transfer story links
+      for (const link of mergedPerson.storyLinks) {
+        const existingLink = await tx.storyPerson.findFirst({
+          where: { storyId: link.storyId, personId: primaryPersonId },
+        });
+        if (!existingLink) {
+          await tx.storyPerson.update({
+            where: { id: link.id },
+            data: { personId: primaryPersonId },
+          });
+        } else {
+          await tx.storyPerson.delete({ where: { id: link.id } });
+        }
+      }
+
+      // 10. Transfer suggestions
+      await tx.suggestion.updateMany({
+        where: { personId: mergedPersonId },
+        data: { personId: primaryPersonId },
+      });
+
+      // 11. Create merge history record
+      const mergeRecord = await tx.personMerge.create({
+        data: {
+          treeId,
+          primaryPersonId,
+          mergedPersonId,
+          performedById: member.userId,
+          mergedPersonData,
+          transferredRelations,
+          transferredMarriages,
+          transferredPhotos,
+          transferredDocuments,
+          transferredStories,
+          fieldSelections,
+          expiresAt,
+        },
+      });
+
+      // 12. Delete the merged person
+      await tx.person.delete({ where: { id: mergedPersonId } });
+
+      return mergeRecord;
+    });
+
+    // Get updated primary person
+    const updatedPerson = await prisma.person.findUnique({
+      where: { id: primaryPersonId },
+      include: {
+        relationshipsFrom: { include: { personTo: { select: { id: true, firstName: true, lastName: true } } } },
+        relationshipsTo: { include: { personFrom: { select: { id: true, firstName: true, lastName: true } } } },
+        marriages: { include: { spouses: { select: { id: true, firstName: true, lastName: true } } } },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        mergeId: result.id,
+        primaryPerson: updatedPerson,
+        mergedPersonName: `${mergedPerson.firstName} ${mergedPerson.lastName}`,
+        canRevertUntil: result.expiresAt,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: 'Invalid request', details: error.errors });
+    }
+    next(error);
+  }
+});
+
+// GET /api/family-trees/:treeId/merges - Get merge history
+familyTreesRouter.get('/:treeId/merges', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const { status } = req.query;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'ADMIN');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = { treeId };
+    if (status) {
+      where.status = status;
+    }
+
+    const merges = await prisma.personMerge.findMany({
+      where,
+      include: {
+        performedBy: { select: { id: true, name: true, avatarUrl: true } },
+        revertedBy: { select: { id: true, name: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Check for expired merges and update status
+    const now = new Date();
+    for (const merge of merges) {
+      if (merge.status === 'COMPLETED' && merge.expiresAt < now) {
+        await prisma.personMerge.update({
+          where: { id: merge.id },
+          data: { status: 'EXPIRED' },
+        });
+        merge.status = 'EXPIRED';
+      }
+    }
+
+    res.json({
+      success: true,
+      data: merges,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/family-trees/:treeId/merges/:mergeId/revert - Revert a merge
+familyTreesRouter.post('/:treeId/merges/:mergeId/revert', async (req, res, next) => {
+  try {
+    const { treeId, mergeId } = req.params;
+    const userId = getUserId(req);
+
+    const tree = await checkTreeAccess(treeId, userId, 'ADMIN');
+    const member = tree.members[0];
+
+    const merge = await prisma.personMerge.findFirst({
+      where: { id: mergeId, treeId },
+    });
+
+    if (!merge) {
+      return res.status(404).json({ success: false, error: 'Merge record not found' });
+    }
+
+    if (merge.status !== 'COMPLETED') {
+      return res.status(400).json({
+        success: false,
+        error: merge.status === 'REVERTED' ? 'Merge has already been reverted' : 'Merge has expired and cannot be reverted',
+      });
+    }
+
+    if (new Date() > merge.expiresAt) {
+      await prisma.personMerge.update({
+        where: { id: mergeId },
+        data: { status: 'EXPIRED' },
+      });
+      return res.status(400).json({ success: false, error: 'Merge has expired and cannot be reverted' });
+    }
+
+    // Restore the merge in a transaction
+    await prisma.$transaction(async (tx) => {
+      // 1. Recreate the merged person
+      const mergedData = merge.mergedPersonData as Record<string, unknown>;
+      const recreatedPerson = await tx.person.create({
+        data: {
+          id: merge.mergedPersonId, // Keep the original ID
+          treeId: merge.treeId,
+          firstName: mergedData.firstName as string,
+          middleName: mergedData.middleName as string | null,
+          lastName: mergedData.lastName as string,
+          maidenName: mergedData.maidenName as string | null,
+          suffix: mergedData.suffix as string | null,
+          nickname: mergedData.nickname as string | null,
+          gender: mergedData.gender as 'MALE' | 'FEMALE' | 'OTHER' | 'UNKNOWN',
+          birthDate: mergedData.birthDate ? new Date(mergedData.birthDate as string) : null,
+          birthPlace: mergedData.birthPlace as string | null,
+          deathDate: mergedData.deathDate ? new Date(mergedData.deathDate as string) : null,
+          deathPlace: mergedData.deathPlace as string | null,
+          isLiving: mergedData.isLiving as boolean,
+          biography: mergedData.biography as string | null,
+          occupation: mergedData.occupation as string | null,
+          education: mergedData.education as string | null,
+          privacy: mergedData.privacy as 'PUBLIC' | 'FAMILY_ONLY' | 'PRIVATE',
+          profilePhoto: mergedData.profilePhoto as string | null,
+          positionX: mergedData.positionX as number | null,
+          positionY: mergedData.positionY as number | null,
+          generation: mergedData.generation as number,
+        },
+      });
+
+      // 2. Restore relationships
+      const transferredRelations = merge.transferredRelations as Array<{
+        id: string;
+        treeId: string;
+        personFromId: string;
+        personToId: string;
+        relationshipType: string;
+        notes: string | null;
+        birthOrder: number | null;
+      }>;
+
+      for (const rel of transferredRelations) {
+        // Check if relationship was on the merged person
+        const wasMergedFrom = rel.personFromId === merge.mergedPersonId;
+        const wasMergedTo = rel.personToId === merge.mergedPersonId;
+
+        if (wasMergedFrom || wasMergedTo) {
+          // Find the relationship on the primary person
+          const currentRel = await tx.relationship.findFirst({
+            where: {
+              treeId,
+              personFromId: wasMergedFrom ? merge.primaryPersonId : rel.personFromId,
+              personToId: wasMergedTo ? merge.primaryPersonId : rel.personToId,
+              relationshipType: rel.relationshipType as 'PARENT' | 'CHILD' | 'SIBLING' | 'SPOUSE' | 'ADOPTIVE_PARENT' | 'ADOPTIVE_CHILD' | 'STEP_PARENT' | 'STEP_CHILD' | 'FOSTER_PARENT' | 'FOSTER_CHILD' | 'GUARDIAN' | 'WARD',
+            },
+          });
+
+          if (currentRel) {
+            // Update back to point to merged person
+            await tx.relationship.update({
+              where: { id: currentRel.id },
+              data: {
+                personFromId: wasMergedFrom ? merge.mergedPersonId : currentRel.personFromId,
+                personToId: wasMergedTo ? merge.mergedPersonId : currentRel.personToId,
+              },
+            });
+          } else {
+            // Recreate the relationship
+            await tx.relationship.create({
+              data: {
+                treeId,
+                personFromId: rel.personFromId,
+                personToId: rel.personToId,
+                relationshipType: rel.relationshipType as 'PARENT' | 'CHILD' | 'SIBLING' | 'SPOUSE' | 'ADOPTIVE_PARENT' | 'ADOPTIVE_CHILD' | 'STEP_PARENT' | 'STEP_CHILD' | 'FOSTER_PARENT' | 'FOSTER_CHILD' | 'GUARDIAN' | 'WARD',
+                notes: rel.notes,
+                birthOrder: rel.birthOrder,
+              },
+            });
+          }
+        }
+      }
+
+      // 3. Restore marriages
+      const transferredMarriages = merge.transferredMarriages as Array<{ id: string }>;
+      for (const marriage of transferredMarriages) {
+        await tx.marriage.update({
+          where: { id: marriage.id },
+          data: {
+            spouses: {
+              disconnect: { id: merge.primaryPersonId },
+              connect: { id: merge.mergedPersonId },
+            },
+          },
+        });
+      }
+
+      // 4. Restore photos
+      const transferredPhotos = merge.transferredPhotos as string[];
+      await tx.treePhoto.updateMany({
+        where: { id: { in: transferredPhotos } },
+        data: { personId: merge.mergedPersonId },
+      });
+
+      // 5. Restore documents
+      const transferredDocuments = merge.transferredDocuments as string[];
+      await tx.sourceDocument.updateMany({
+        where: { id: { in: transferredDocuments } },
+        data: { personId: merge.mergedPersonId },
+      });
+
+      // 6. Restore stories
+      const transferredStories = merge.transferredStories as string[];
+      await tx.familyStory.updateMany({
+        where: { id: { in: transferredStories } },
+        data: { personId: merge.mergedPersonId },
+      });
+
+      // 7. Update merge record
+      await tx.personMerge.update({
+        where: { id: mergeId },
+        data: {
+          status: 'REVERTED',
+          revertedAt: new Date(),
+          revertedById: member.userId,
+        },
+      });
+
+      return recreatedPerson;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Merge successfully reverted',
+        restoredPersonId: merge.mergedPersonId,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==========================================
+// Tree Statistics
+// ==========================================
+
+interface PersonStats {
+  id: string;
+  firstName: string;
+  lastName: string;
+  birthDate: Date | null;
+  deathDate: Date | null;
+  birthPlace: string | null;
+  isLiving: boolean;
+  generation: number;
+  profilePhoto: string | null;
+}
+
+function calculateAge(birthDate: Date, deathDate?: Date | null): number {
+  const endDate = deathDate ? new Date(deathDate) : new Date();
+  const birth = new Date(birthDate);
+  let age = endDate.getFullYear() - birth.getFullYear();
+  const monthDiff = endDate.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && endDate.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+function calculateCompletenessScore(person: PersonStats & {
+  middleName?: string | null;
+  maidenName?: string | null;
+  deathPlace?: string | null;
+  biography?: string | null;
+  occupation?: string | null;
+  education?: string | null;
+}): number {
+  let score = 0;
+  const fields = [
+    { field: 'firstName', weight: 15 },
+    { field: 'lastName', weight: 15 },
+    { field: 'birthDate', weight: 15 },
+    { field: 'birthPlace', weight: 10 },
+    { field: 'biography', weight: 10 },
+    { field: 'occupation', weight: 5 },
+    { field: 'education', weight: 5 },
+    { field: 'profilePhoto', weight: 10 },
+  ];
+
+  // For deceased, add death fields
+  if (!person.isLiving) {
+    fields.push({ field: 'deathDate', weight: 10 });
+    fields.push({ field: 'deathPlace', weight: 5 });
+  } else {
+    // Redistribute weight for living people
+    fields.forEach(f => {
+      if (f.field === 'birthDate') f.weight = 20;
+      if (f.field === 'birthPlace') f.weight = 15;
+    });
+  }
+
+  for (const { field, weight } of fields) {
+    const value = (person as unknown as Record<string, unknown>)[field];
+    if (value !== null && value !== undefined && value !== '') {
+      score += weight;
+    }
+  }
+
+  return Math.min(100, score);
+}
+
+// GET /api/family-trees/:treeId/statistics - Get tree statistics
+familyTreesRouter.get('/:treeId/statistics', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'VIEWER');
+
+    // Get all people with relevant fields
+    const people = await prisma.person.findMany({
+      where: { treeId },
+      select: {
+        id: true,
+        firstName: true,
+        middleName: true,
+        lastName: true,
+        maidenName: true,
+        birthDate: true,
+        birthPlace: true,
+        deathDate: true,
+        deathPlace: true,
+        isLiving: true,
+        generation: true,
+        profilePhoto: true,
+        biography: true,
+        occupation: true,
+        education: true,
+      },
+    });
+
+    // Get counts for related data
+    const [photoCount, documentCount, storyCount, relationshipCount] = await Promise.all([
+      prisma.treePhoto.count({ where: { treeId } }),
+      prisma.sourceDocument.count({ where: { treeId } }),
+      prisma.familyStory.count({ where: { treeId } }),
+      prisma.relationship.count({ where: { treeId } }),
+    ]);
+
+    // Basic counts
+    const totalMembers = people.length;
+    const livingMembers = people.filter(p => p.isLiving).length;
+    const deceasedMembers = people.filter(p => !p.isLiving).length;
+
+    // Generation statistics
+    const generations = [...new Set(people.map(p => p.generation))].sort((a, b) => a - b);
+    const generationCounts = generations.map(gen => ({
+      generation: gen,
+      count: people.filter(p => p.generation === gen).length,
+    }));
+    const deepestGeneration = Math.max(...generations, 0);
+
+    // Age statistics - only for people with birth dates
+    const peopleWithBirthDates = people.filter(p => p.birthDate);
+    let oldestLiving: { person: PersonStats; age: number } | null = null;
+    let youngestLiving: { person: PersonStats; age: number } | null = null;
+    let longestLived: { person: PersonStats; age: number } | null = null;
+    let averageLifespan = 0;
+    let averageLivingAge = 0;
+
+    const livingWithDates = peopleWithBirthDates.filter(p => p.isLiving);
+    const deceasedWithDates = peopleWithBirthDates.filter(p => !p.isLiving && p.deathDate);
+
+    // Oldest and youngest living
+    if (livingWithDates.length > 0) {
+      const livingWithAges = livingWithDates.map(p => ({
+        person: p,
+        age: calculateAge(p.birthDate!),
+      }));
+      livingWithAges.sort((a, b) => b.age - a.age);
+      oldestLiving = livingWithAges[0];
+      youngestLiving = livingWithAges[livingWithAges.length - 1];
+      averageLivingAge = Math.round(
+        livingWithAges.reduce((sum, p) => sum + p.age, 0) / livingWithAges.length
+      );
+    }
+
+    // Longest lived (deceased)
+    if (deceasedWithDates.length > 0) {
+      const deceasedWithAges = deceasedWithDates.map(p => ({
+        person: p,
+        age: calculateAge(p.birthDate!, p.deathDate),
+      }));
+      deceasedWithAges.sort((a, b) => b.age - a.age);
+      longestLived = deceasedWithAges[0];
+      averageLifespan = Math.round(
+        deceasedWithAges.reduce((sum, p) => sum + p.age, 0) / deceasedWithAges.length
+      );
+    }
+
+    // Geographic distribution
+    const birthPlaces = people
+      .filter(p => p.birthPlace)
+      .map(p => p.birthPlace!)
+      .reduce((acc, place) => {
+        // Normalize place names - take last part (usually city or country)
+        const parts = place.split(',').map(s => s.trim());
+        const key = parts[parts.length - 1] || place;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const geographicDistribution = Object.entries(birthPlaces)
+      .map(([location, count]) => ({ location, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Most common surnames
+    const surnames = people
+      .map(p => p.lastName)
+      .reduce((acc, name) => {
+        const normalized = name.toLowerCase();
+        acc[normalized] = (acc[normalized] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const commonSurnames = Object.entries(surnames)
+      .map(([name, count]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Maiden names (for married women)
+    const maidenNames = people
+      .filter(p => p.maidenName)
+      .map(p => p.maidenName!)
+      .reduce((acc, name) => {
+        const normalized = name.toLowerCase();
+        acc[normalized] = (acc[normalized] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const commonMaidenNames = Object.entries(maidenNames)
+      .map(([name, count]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Completeness score
+    const completenessScores = people.map(p => calculateCompletenessScore(p));
+    const averageCompleteness = Math.round(
+      completenessScores.reduce((sum, s) => sum + s, 0) / (completenessScores.length || 1)
+    );
+
+    // Profiles by completeness tier
+    const completeProfiles = completenessScores.filter(s => s >= 80).length;
+    const partialProfiles = completenessScores.filter(s => s >= 40 && s < 80).length;
+    const incompleteProfiles = completenessScores.filter(s => s < 40).length;
+
+    // Birth/death date coverage
+    const withBirthDate = peopleWithBirthDates.length;
+    const withDeathDate = deceasedWithDates.length;
+    const deceasedMissingDeathDate = deceasedMembers - withDeathDate;
+
+    // Timeline data - births by decade
+    const birthsByDecade = peopleWithBirthDates.reduce((acc, p) => {
+      const decade = Math.floor(new Date(p.birthDate!).getFullYear() / 10) * 10;
+      acc[decade] = (acc[decade] || 0) + 1;
+      return acc;
+    }, {} as Record<number, number>);
+
+    const birthTimeline = Object.entries(birthsByDecade)
+      .map(([decade, count]) => ({ decade: Number(decade), count }))
+      .sort((a, b) => a.decade - b.decade);
+
+    res.json({
+      success: true,
+      data: {
+        // Overview
+        overview: {
+          totalMembers,
+          livingMembers,
+          deceasedMembers,
+          generations: deepestGeneration + 1,
+          photos: photoCount,
+          documents: documentCount,
+          stories: storyCount,
+          relationships: relationshipCount,
+        },
+
+        // Generation breakdown
+        generationBreakdown: generationCounts,
+
+        // Age statistics
+        ageStatistics: {
+          oldestLiving: oldestLiving
+            ? {
+                id: oldestLiving.person.id,
+                name: `${oldestLiving.person.firstName} ${oldestLiving.person.lastName}`,
+                age: oldestLiving.age,
+                profilePhoto: oldestLiving.person.profilePhoto,
+              }
+            : null,
+          youngestLiving: youngestLiving
+            ? {
+                id: youngestLiving.person.id,
+                name: `${youngestLiving.person.firstName} ${youngestLiving.person.lastName}`,
+                age: youngestLiving.age,
+                profilePhoto: youngestLiving.person.profilePhoto,
+              }
+            : null,
+          longestLived: longestLived
+            ? {
+                id: longestLived.person.id,
+                name: `${longestLived.person.firstName} ${longestLived.person.lastName}`,
+                age: longestLived.age,
+                profilePhoto: longestLived.person.profilePhoto,
+              }
+            : null,
+          averageLivingAge,
+          averageLifespan,
+        },
+
+        // Geographic data
+        geographicDistribution,
+
+        // Names
+        commonSurnames,
+        commonMaidenNames,
+
+        // Data quality
+        dataQuality: {
+          averageCompleteness,
+          completeProfiles,
+          partialProfiles,
+          incompleteProfiles,
+          withBirthDate,
+          withBirthDatePercent: Math.round((withBirthDate / totalMembers) * 100) || 0,
+          deceasedMissingDeathDate,
+        },
+
+        // Timeline
+        birthTimeline,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==========================================
+// Activity Feed (US-FT-6.3)
+// ==========================================
+
+type ActivityType =
+  | 'MEMBER_JOINED'
+  | 'MEMBER_LEFT'
+  | 'MEMBER_ROLE_CHANGED'
+  | 'PERSON_ADDED'
+  | 'PERSON_UPDATED'
+  | 'PERSON_DELETED'
+  | 'PERSON_MERGED'
+  | 'RELATIONSHIP_ADDED'
+  | 'RELATIONSHIP_REMOVED'
+  | 'MARRIAGE_ADDED'
+  | 'MARRIAGE_REMOVED'
+  | 'PHOTO_UPLOADED'
+  | 'PHOTO_DELETED'
+  | 'DOCUMENT_UPLOADED'
+  | 'DOCUMENT_APPROVED'
+  | 'DOCUMENT_REJECTED'
+  | 'STORY_PUBLISHED'
+  | 'STORY_UPDATED'
+  | 'SUGGESTION_MADE'
+  | 'SUGGESTION_APPROVED'
+  | 'SUGGESTION_REJECTED'
+  | 'TREE_UPDATED'
+  | 'TREE_PRIVACY_CHANGED';
+
+interface RecordActivityInput {
+  treeId: string;
+  actorId: string;
+  type: ActivityType;
+  targetPersonId?: string | null;
+  targetUserId?: string | null;
+  targetPhotoId?: string | null;
+  targetDocumentId?: string | null;
+  targetStoryId?: string | null;
+  metadata?: Record<string, unknown>;
+  isPrivate?: boolean;
+}
+
+// Helper function to record activities
+export async function recordActivity(input: RecordActivityInput): Promise<void> {
+  try {
+    await prisma.treeActivity.create({
+      data: {
+        treeId: input.treeId,
+        actorId: input.actorId,
+        type: input.type,
+        targetPersonId: input.targetPersonId || null,
+        targetUserId: input.targetUserId || null,
+        targetPhotoId: input.targetPhotoId || null,
+        targetDocumentId: input.targetDocumentId || null,
+        targetStoryId: input.targetStoryId || null,
+        metadata: input.metadata || {},
+        isPrivate: input.isPrivate || false,
+      },
+    });
+  } catch (error) {
+    // Log but don't throw - activity recording shouldn't break main operations
+    console.error('Failed to record activity:', error);
+  }
+}
+
+// GET /api/family-trees/:treeId/activity - Get activity feed
+familyTreesRouter.get('/:treeId/activity', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    const tree = await checkTreeAccess(treeId, userId, 'VIEWER');
+    const member = tree.members[0];
+    const isAdmin = member.role === 'ADMIN';
+
+    // Query params
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const cursor = req.query.cursor as string | undefined;
+    const types = req.query.types
+      ? (req.query.types as string).split(',') as ActivityType[]
+      : undefined;
+    const daysAgo = parseInt(req.query.daysAgo as string) || 90;
+
+    // Calculate date cutoff
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
+
+    // Build where clause
+    const where: {
+      treeId: string;
+      createdAt: { gte: Date };
+      type?: { in: ActivityType[] };
+      isPrivate?: boolean;
+      id?: { lt: string };
+    } = {
+      treeId,
+      createdAt: { gte: cutoffDate },
+    };
+
+    if (types && types.length > 0) {
+      where.type = { in: types };
+    }
+
+    // Non-admins can't see private activities
+    if (!isAdmin) {
+      where.isPrivate = false;
+    }
+
+    // Cursor-based pagination
+    if (cursor) {
+      where.id = { lt: cursor };
+    }
+
+    const activities = await prisma.treeActivity.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1, // Get one extra to check for more
+      include: {
+        actor: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    // Check if there are more results
+    const hasMore = activities.length > limit;
+    if (hasMore) {
+      activities.pop();
+    }
+
+    // Get read status for this user
+    const readStatus = await prisma.activityReadStatus.findUnique({
+      where: {
+        treeId_userId: {
+          treeId,
+          userId,
+        },
+      },
+    });
+
+    // Count unread activities
+    const unreadCount = await prisma.treeActivity.count({
+      where: {
+        treeId,
+        createdAt: {
+          gte: cutoffDate,
+          ...(readStatus?.lastSeenAt ? { gt: readStatus.lastSeenAt } : {}),
+        },
+        isPrivate: isAdmin ? undefined : false,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        activities: activities.map(a => ({
+          id: a.id,
+          type: a.type,
+          actor: a.actor,
+          targetPersonId: a.targetPersonId,
+          targetUserId: a.targetUserId,
+          targetPhotoId: a.targetPhotoId,
+          targetDocumentId: a.targetDocumentId,
+          targetStoryId: a.targetStoryId,
+          metadata: a.metadata,
+          isPrivate: a.isPrivate,
+          createdAt: a.createdAt.toISOString(),
+          isNew: readStatus ? a.createdAt > readStatus.lastSeenAt : true,
+        })),
+        hasMore,
+        nextCursor: hasMore ? activities[activities.length - 1].id : null,
+        unreadCount,
+        lastSeenAt: readStatus?.lastSeenAt?.toISOString() || null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/family-trees/:treeId/activity/mark-seen - Mark activities as seen
+familyTreesRouter.post('/:treeId/activity/mark-seen', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'VIEWER');
+
+    await prisma.activityReadStatus.upsert({
+      where: {
+        treeId_userId: {
+          treeId,
+          userId,
+        },
+      },
+      update: {
+        lastSeenAt: new Date(),
+      },
+      create: {
+        treeId,
+        userId,
+        lastSeenAt: new Date(),
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        markedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/family-trees/:treeId/activity/summary - Get activity summary
+familyTreesRouter.get('/:treeId/activity/summary', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    const tree = await checkTreeAccess(treeId, userId, 'VIEWER');
+    const member = tree.members[0];
+    const isAdmin = member.role === 'ADMIN';
+
+    const daysAgo = parseInt(req.query.daysAgo as string) || 7;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
+
+    // Get counts by type
+    const typeCounts = await prisma.treeActivity.groupBy({
+      by: ['type'],
+      where: {
+        treeId,
+        createdAt: { gte: cutoffDate },
+        isPrivate: isAdmin ? undefined : false,
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    // Get top contributors
+    const contributorCounts = await prisma.treeActivity.groupBy({
+      by: ['actorId'],
+      where: {
+        treeId,
+        createdAt: { gte: cutoffDate },
+      },
+      _count: {
+        _all: true,
+      },
+      orderBy: {
+        _count: {
+          actorId: 'desc',
+        },
+      },
+      take: 5,
+    });
+
+    // Get contributor details
+    const contributorIds = contributorCounts.map(c => c.actorId);
+    const contributors = await prisma.user.findMany({
+      where: { id: { in: contributorIds } },
+      select: {
+        id: true,
+        name: true,
+        avatarUrl: true,
+      },
+    });
+
+    const contributorMap = new Map(contributors.map(c => [c.id, c]));
+
+    res.json({
+      success: true,
+      data: {
+        period: {
+          start: cutoffDate.toISOString(),
+          end: new Date().toISOString(),
+          days: daysAgo,
+        },
+        byType: typeCounts.reduce(
+          (acc, tc) => {
+            acc[tc.type] = tc._count._all;
+            return acc;
+          },
+          {} as Record<string, number>
+        ),
+        totalActivities: typeCounts.reduce((sum, tc) => sum + tc._count._all, 0),
+        topContributors: contributorCounts.map(c => ({
+          user: contributorMap.get(c.actorId) || { id: c.actorId, name: 'Unknown' },
+          count: c._count._all,
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==========================================
+// GEDCOM Import (US-FT-6.4)
+// ==========================================
+
+// Configure multer for GEDCOM file uploads (up to 50MB)
+const gedcomUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB
+  },
+  fileFilter: (_req, file, cb) => {
+    // Accept .ged files and text files
+    if (
+      file.originalname.endsWith('.ged') ||
+      file.originalname.endsWith('.gedcom') ||
+      file.mimetype === 'text/plain' ||
+      file.mimetype === 'application/x-gedcom'
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only GEDCOM files (.ged, .gedcom) are allowed'));
+    }
+  },
+});
+
+// Store parsed GEDCOM data temporarily for preview -> import flow
+const gedcomPreviewCache = new Map<string, {
+  result: GedcomParseResult;
+  userId: string;
+  treeId: string | null;
+  expiresAt: number;
+}>();
+
+// Clean up expired previews every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of gedcomPreviewCache.entries()) {
+    if (value.expiresAt < now) {
+      gedcomPreviewCache.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// POST /api/family-trees/import/gedcom/preview - Parse and preview GEDCOM file
+familyTreesRouter.post(
+  '/import/gedcom/preview',
+  gedcomUpload.single('file'),
+  async (req, res, next) => {
+    try {
+      const userId = getUserId(req);
+      const treeId = req.body.treeId as string | undefined;
+
+      if (!req.file) {
+        throw new AppError('No file uploaded', 400);
+      }
+
+      // If importing to existing tree, check access
+      if (treeId) {
+        await checkTreeAccess(treeId, userId, 'ADMIN');
+      }
+
+      // Parse the GEDCOM file
+      const content = req.file.buffer.toString('utf-8');
+      let result = parseGedcom(content);
+      result = validateGedcomData(result);
+
+      // Generate preview
+      const preview = generateImportPreview(result);
+
+      // Store in cache for later import
+      const previewId = `${userId}-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+      gedcomPreviewCache.set(previewId, {
+        result,
+        userId,
+        treeId: treeId || null,
+        expiresAt: Date.now() + 30 * 60 * 1000, // 30 minutes
+      });
+
+      res.json({
+        success: true,
+        data: {
+          previewId,
+          filename: req.file.originalname,
+          fileSize: req.file.size,
+          ...preview,
+          header: result.header,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/family-trees/import/gedcom/confirm - Execute the import
+familyTreesRouter.post('/import/gedcom/confirm', async (req, res, next) => {
+  try {
+    const userId = getUserId(req);
+    const { previewId, treeName, treeDescription, treePrivacy } = req.body;
+
+    if (!previewId) {
+      throw new AppError('Preview ID is required', 400);
+    }
+
+    // Get cached preview data
+    const cached = gedcomPreviewCache.get(previewId);
+    if (!cached) {
+      throw new AppError('Preview expired or not found. Please upload the file again.', 404);
+    }
+
+    if (cached.userId !== userId) {
+      throw new AppError('Unauthorized', 403);
+    }
+
+    const { result, treeId: existingTreeId } = cached;
+
+    // Start a transaction for the entire import
+    const importResult = await prisma.$transaction(async (tx) => {
+      let treeId: string;
+      let isNewTree = false;
+
+      // Create new tree or use existing
+      if (existingTreeId) {
+        treeId = existingTreeId;
+      } else {
+        // Create new tree
+        const newTree = await tx.familyTree.create({
+          data: {
+            name: treeName || 'Imported Family Tree',
+            description: treeDescription || `Imported from GEDCOM on ${new Date().toLocaleDateString()}`,
+            privacy: treePrivacy || 'PRIVATE',
+            createdBy: userId,
+            members: {
+              create: {
+                userId,
+                role: 'ADMIN',
+              },
+            },
+          },
+        });
+        treeId = newTree.id;
+        isNewTree = true;
+      }
+
+      // Map GEDCOM IDs to database IDs
+      const personIdMap = new Map<string, string>();
+      const stats = {
+        personsCreated: 0,
+        relationshipsCreated: 0,
+        marriagesCreated: 0,
+        errors: [] as string[],
+      };
+
+      // Create all individuals first
+      for (const ind of result.individuals) {
+        try {
+          const person = await tx.person.create({
+            data: {
+              treeId,
+              firstName: ind.firstName || 'Unknown',
+              middleName: ind.middleName,
+              lastName: ind.lastName || 'Unknown',
+              maidenName: ind.maidenName,
+              suffix: ind.suffix,
+              nickname: ind.nickname,
+              gender: convertGender(ind.gender),
+              birthDate: ind.birthDate ? new Date(ind.birthDate) : null,
+              birthPlace: ind.birthPlace,
+              deathDate: ind.deathDate ? new Date(ind.deathDate) : null,
+              deathPlace: ind.deathPlace,
+              isLiving: ind.isLiving,
+              occupation: ind.occupation,
+              education: ind.education,
+              biography: ind.notes,
+            },
+          });
+          personIdMap.set(ind.id, person.id);
+          stats.personsCreated++;
+        } catch (err) {
+          stats.errors.push(`Failed to create person ${ind.id}: ${(err as Error).message}`);
+        }
+      }
+
+      // Create relationships from families
+      for (const fam of result.families) {
+        const husbandDbId = fam.husbandId ? personIdMap.get(fam.husbandId) : null;
+        const wifeDbId = fam.wifeId ? personIdMap.get(fam.wifeId) : null;
+
+        // Create marriage if both spouses exist
+        if (husbandDbId && wifeDbId) {
+          try {
+            await tx.marriage.create({
+              data: {
+                treeId,
+                person1Id: husbandDbId,
+                person2Id: wifeDbId,
+                marriageDate: fam.marriageDate ? new Date(fam.marriageDate) : null,
+                marriagePlace: fam.marriagePlace,
+                divorceDate: fam.divorceDate ? new Date(fam.divorceDate) : null,
+                divorcePlace: fam.divorcePlace,
+                status: fam.divorceDate ? 'DIVORCED' : 'MARRIED',
+              },
+            });
+            stats.marriagesCreated++;
+          } catch (err) {
+            stats.errors.push(`Failed to create marriage for family ${fam.id}: ${(err as Error).message}`);
+          }
+        }
+
+        // Create parent-child relationships
+        for (const childGedcomId of fam.childIds) {
+          const childDbId = personIdMap.get(childGedcomId);
+          if (!childDbId) continue;
+
+          // Relationship with father
+          if (husbandDbId) {
+            try {
+              await tx.relationship.create({
+                data: {
+                  treeId,
+                  fromPersonId: husbandDbId,
+                  toPersonId: childDbId,
+                  type: 'BIOLOGICAL',
+                },
+              });
+              stats.relationshipsCreated++;
+            } catch (err) {
+              // Might be duplicate, ignore
+            }
+          }
+
+          // Relationship with mother
+          if (wifeDbId) {
+            try {
+              await tx.relationship.create({
+                data: {
+                  treeId,
+                  fromPersonId: wifeDbId,
+                  toPersonId: childDbId,
+                  type: 'BIOLOGICAL',
+                },
+              });
+              stats.relationshipsCreated++;
+            } catch (err) {
+              // Might be duplicate, ignore
+            }
+          }
+        }
+      }
+
+      return {
+        treeId,
+        isNewTree,
+        stats,
+      };
+    }, {
+      timeout: 60000, // 60 second timeout for large imports
+    });
+
+    // Remove from cache
+    gedcomPreviewCache.delete(previewId);
+
+    res.json({
+      success: true,
+      data: {
+        treeId: importResult.treeId,
+        isNewTree: importResult.isNewTree,
+        stats: importResult.stats,
+        summary: {
+          personsCreated: importResult.stats.personsCreated,
+          relationshipsCreated: importResult.stats.relationshipsCreated,
+          marriagesCreated: importResult.stats.marriagesCreated,
+          errorsCount: importResult.stats.errors.length,
+        },
+        errors: importResult.stats.errors.slice(0, 50), // Return first 50 errors
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/family-trees/import/gedcom/preview/:previewId - Cancel preview
+familyTreesRouter.delete('/import/gedcom/preview/:previewId', async (req, res, next) => {
+  try {
+    const userId = getUserId(req);
+    const { previewId } = req.params;
+
+    const cached = gedcomPreviewCache.get(previewId);
+    if (!cached) {
+      throw new AppError('Preview not found', 404);
+    }
+
+    if (cached.userId !== userId) {
+      throw new AppError('Unauthorized', 403);
+    }
+
+    gedcomPreviewCache.delete(previewId);
+
+    res.json({
+      success: true,
+      data: { deleted: true },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================
+// COMPLETENESS & BADGES ENDPOINTS
+// ============================================================
+
+// Badge definitions
+const BADGE_DEFINITIONS = [
+  // Data completeness badges
+  {
+    id: 'first_photo',
+    name: 'Shutterbug',
+    description: 'Add your first photo',
+    longDescription: 'Upload the first photo to your family tree. Photos bring your ancestors to life!',
+    icon: 'camera' as const,
+    category: 'data' as const,
+    requirement: 1,
+    requirementType: 'photos',
+    tier: 'bronze' as const,
+  },
+  {
+    id: 'photographer',
+    name: 'Family Photographer',
+    description: 'Add 10 photos',
+    longDescription: 'Build a visual history by adding 10 photos to your family tree.',
+    icon: 'camera' as const,
+    category: 'data' as const,
+    requirement: 10,
+    requirementType: 'photos',
+    tier: 'silver' as const,
+  },
+  {
+    id: 'archivist',
+    name: 'Family Archivist',
+    description: 'Add 50 photos',
+    longDescription: 'Create a comprehensive photo archive with 50 photos.',
+    icon: 'camera' as const,
+    category: 'data' as const,
+    requirement: 50,
+    requirementType: 'photos',
+    tier: 'gold' as const,
+  },
+  {
+    id: 'first_story',
+    name: 'Storyteller',
+    description: 'Write your first family story',
+    longDescription: 'Preserve family memories by writing your first story.',
+    icon: 'book' as const,
+    category: 'data' as const,
+    requirement: 1,
+    requirementType: 'stories',
+    tier: 'bronze' as const,
+  },
+  {
+    id: 'historian',
+    name: 'Family Historian',
+    description: 'Write 5 family stories',
+    longDescription: 'Become the family historian by recording 5 stories.',
+    icon: 'book' as const,
+    category: 'data' as const,
+    requirement: 5,
+    requirementType: 'stories',
+    tier: 'silver' as const,
+  },
+  // Milestone badges
+  {
+    id: 'starter',
+    name: 'Tree Starter',
+    description: 'Add 5 family members',
+    longDescription: 'Begin your journey by adding 5 family members to your tree.',
+    icon: 'users' as const,
+    category: 'milestone' as const,
+    requirement: 5,
+    requirementType: 'members',
+    tier: 'bronze' as const,
+  },
+  {
+    id: 'growing_tree',
+    name: 'Growing Tree',
+    description: 'Add 25 family members',
+    longDescription: 'Your tree is growing! Add 25 family members.',
+    icon: 'users' as const,
+    category: 'milestone' as const,
+    requirement: 25,
+    requirementType: 'members',
+    tier: 'silver' as const,
+  },
+  {
+    id: 'family_forest',
+    name: 'Family Forest',
+    description: 'Add 100 family members',
+    longDescription: 'Create a forest of family connections with 100 members.',
+    icon: 'users' as const,
+    category: 'milestone' as const,
+    requirement: 100,
+    requirementType: 'members',
+    tier: 'gold' as const,
+  },
+  {
+    id: 'dynasty',
+    name: 'Dynasty Builder',
+    description: 'Add 500 family members',
+    longDescription: 'Build a dynasty spanning generations with 500 members.',
+    icon: 'crown' as const,
+    category: 'milestone' as const,
+    requirement: 500,
+    requirementType: 'members',
+    tier: 'platinum' as const,
+  },
+  {
+    id: 'three_generations',
+    name: 'Three Generations',
+    description: 'Record 3 generations',
+    longDescription: 'Connect three generations of your family.',
+    icon: 'users' as const,
+    category: 'milestone' as const,
+    requirement: 3,
+    requirementType: 'generations',
+    tier: 'bronze' as const,
+  },
+  {
+    id: 'five_generations',
+    name: 'Five Generations',
+    description: 'Record 5 generations',
+    longDescription: 'Trace your family through five generations.',
+    icon: 'users' as const,
+    category: 'milestone' as const,
+    requirement: 5,
+    requirementType: 'generations',
+    tier: 'silver' as const,
+  },
+  {
+    id: 'deep_roots',
+    name: 'Deep Roots',
+    description: 'Record 8+ generations',
+    longDescription: 'Uncover your deep roots with 8 or more generations.',
+    icon: 'trophy' as const,
+    category: 'milestone' as const,
+    requirement: 8,
+    requirementType: 'generations',
+    tier: 'gold' as const,
+  },
+  // Engagement badges
+  {
+    id: 'connector',
+    name: 'Connector',
+    description: 'Add 10 relationships',
+    longDescription: 'Build family connections by adding 10 relationships.',
+    icon: 'heart' as const,
+    category: 'engagement' as const,
+    requirement: 10,
+    requirementType: 'relationships',
+    tier: 'bronze' as const,
+  },
+  {
+    id: 'web_weaver',
+    name: 'Web Weaver',
+    description: 'Add 50 relationships',
+    longDescription: 'Weave a complex web of family connections with 50 relationships.',
+    icon: 'heart' as const,
+    category: 'engagement' as const,
+    requirement: 50,
+    requirementType: 'relationships',
+    tier: 'silver' as const,
+  },
+  {
+    id: 'perfectionist',
+    name: 'Perfectionist',
+    description: 'Achieve 100% tree completeness',
+    longDescription: 'Complete every profile in your tree to perfection.',
+    icon: 'star' as const,
+    category: 'engagement' as const,
+    requirement: 100,
+    requirementType: 'completeness',
+    tier: 'platinum' as const,
+  },
+];
+
+// Calculate person completeness score
+function calculatePersonCompleteness(person: {
+  firstName: string;
+  lastName: string;
+  birthDate: Date | null;
+  deathDate: Date | null;
+  isLiving: boolean;
+  birthPlace: string | null;
+  deathPlace: string | null;
+  biography: string | null;
+  occupation: string | null;
+  profilePhotoUrl: string | null;
+}): { score: number; missingFields: string[] } {
+  const fields = [
+    { name: 'First Name', value: person.firstName, weight: 15 },
+    { name: 'Last Name', value: person.lastName, weight: 15 },
+    { name: 'Birth Date', value: person.birthDate, weight: 15 },
+    { name: 'Birth Place', value: person.birthPlace, weight: 10 },
+    { name: 'Photo', value: person.profilePhotoUrl, weight: 10 },
+    { name: 'Biography', value: person.biography, weight: 10 },
+    { name: 'Occupation', value: person.occupation, weight: 5 },
+  ];
+
+  // Death date/place only matters for deceased
+  if (!person.isLiving) {
+    fields.push(
+      { name: 'Death Date', value: person.deathDate, weight: 10 },
+      { name: 'Death Place', value: person.deathPlace, weight: 10 }
+    );
+  } else {
+    // Redistribute weight for living people
+    fields[0].weight = 18;
+    fields[1].weight = 18;
+    fields[2].weight = 18;
+    fields[3].weight = 13;
+    fields[4].weight = 13;
+    fields[5].weight = 13;
+    fields[6].weight = 7;
+  }
+
+  let totalWeight = fields.reduce((sum, f) => sum + f.weight, 0);
+  let earnedWeight = 0;
+  const missingFields: string[] = [];
+
+  for (const field of fields) {
+    if (field.value) {
+      earnedWeight += field.weight;
+    } else {
+      missingFields.push(field.name);
+    }
+  }
+
+  return {
+    score: Math.round((earnedWeight / totalWeight) * 100),
+    missingFields,
+  };
+}
+
+// GET /api/family-trees/:treeId/completeness - Get tree completeness data
+familyTreesRouter.get('/:treeId/completeness', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'VIEWER');
+
+    // Get all people in tree
+    const people = await prisma.person.findMany({
+      where: { treeId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        birthDate: true,
+        deathDate: true,
+        isLiving: true,
+        birthPlace: true,
+        deathPlace: true,
+        biography: true,
+        occupation: true,
+        profilePhotoUrl: true,
+      },
+    });
+
+    // Get counts for stats
+    const [photoCount, storyCount, relationshipCount, documentCount] = await Promise.all([
+      prisma.treePhoto.count({ where: { treeId } }),
+      prisma.familyStory.count({ where: { treeId } }),
+      prisma.relationship.count({ where: { treeId } }),
+      prisma.sourceDocument.count({ where: { treeId } }),
+    ]);
+
+    // Calculate individual completeness scores
+    const personScores = people.map(person => {
+      const { score, missingFields } = calculatePersonCompleteness(person);
+      return {
+        id: person.id,
+        name: `${person.firstName} ${person.lastName}`.trim(),
+        photoUrl: person.profilePhotoUrl,
+        completeness: score,
+        missingFields,
+      };
+    });
+
+    // Calculate field coverage
+    const totalPeople = people.length || 1;
+    const deceasedCount = people.filter(p => !p.isLiving).length || 1;
+    const fieldCoverage = {
+      birthDates: Math.round((people.filter(p => p.birthDate).length / totalPeople) * 100),
+      deathDates: Math.round((people.filter(p => !p.isLiving && p.deathDate).length / deceasedCount) * 100),
+      birthPlaces: Math.round((people.filter(p => p.birthPlace).length / totalPeople) * 100),
+      photos: Math.round((people.filter(p => p.profilePhotoUrl).length / totalPeople) * 100),
+      biographies: Math.round((people.filter(p => p.biography).length / totalPeople) * 100),
+      occupations: Math.round((people.filter(p => p.occupation).length / totalPeople) * 100),
+      relationships: relationshipCount > 0 ? Math.min(100, Math.round((relationshipCount / (totalPeople * 2)) * 100)) : 0,
+    };
+
+    // Calculate overall score
+    const averageCompleteness = personScores.length > 0
+      ? Math.round(personScores.reduce((sum, p) => sum + p.completeness, 0) / personScores.length)
+      : 0;
+
+    // Categorize profiles
+    const completeProfiles = personScores.filter(p => p.completeness >= 80).length;
+    const partialProfiles = personScores.filter(p => p.completeness >= 40 && p.completeness < 80).length;
+    const incompleteProfiles = personScores.filter(p => p.completeness < 40).length;
+
+    // Generate suggestions
+    const suggestions: Array<{
+      id: string;
+      type: string;
+      priority: string;
+      title: string;
+      description: string;
+      personId?: string;
+      personName?: string;
+      action: string;
+    }> = [];
+
+    // Add suggestions for incomplete profiles
+    const incompletePeople = personScores
+      .filter(p => p.completeness < 80)
+      .sort((a, b) => a.completeness - b.completeness)
+      .slice(0, 10);
+
+    for (const person of incompletePeople) {
+      if (person.missingFields.includes('Birth Date')) {
+        suggestions.push({
+          id: `${person.id}_birthdate`,
+          type: 'add_date',
+          priority: person.completeness < 40 ? 'high' : 'medium',
+          title: 'Add birth date',
+          description: `Add birth date for ${person.name} to improve their profile completeness.`,
+          personId: person.id,
+          personName: person.name,
+          action: 'Edit Profile',
+        });
+      }
+      if (person.missingFields.includes('Photo')) {
+        suggestions.push({
+          id: `${person.id}_photo`,
+          type: 'add_photo',
+          priority: 'medium',
+          title: 'Add photo',
+          description: `Add a photo for ${person.name} to bring their profile to life.`,
+          personId: person.id,
+          personName: person.name,
+          action: 'Add Photo',
+        });
+      }
+      if (person.missingFields.includes('Biography')) {
+        suggestions.push({
+          id: `${person.id}_bio`,
+          type: 'add_bio',
+          priority: 'low',
+          title: 'Add biography',
+          description: `Write a biography for ${person.name} to preserve their story.`,
+          personId: person.id,
+          personName: person.name,
+          action: 'Edit Profile',
+        });
+      }
+    }
+
+    // Limit suggestions
+    const limitedSuggestions = suggestions.slice(0, 15);
+
+    // Get generations for badges
+    const generations = new Set(people.map(p => p.birthDate ? new Date(p.birthDate).getFullYear() : null).filter(Boolean));
+    const generationCount = Math.ceil(generations.size / 25); // Rough approximation: 25 years per generation
+
+    // Calculate badge progress
+    const badgeMetrics = {
+      photos: photoCount,
+      stories: storyCount,
+      members: people.length,
+      relationships: relationshipCount,
+      generations: generationCount,
+      completeness: averageCompleteness,
+      documents: documentCount,
+    };
+
+    const badges = BADGE_DEFINITIONS.map(badge => {
+      const progress = badgeMetrics[badge.requirementType as keyof typeof badgeMetrics] || 0;
+      return {
+        ...badge,
+        progress,
+        earned: progress >= badge.requirement,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        overallScore: averageCompleteness,
+        totalMembers: people.length,
+        completeProfiles,
+        partialProfiles,
+        incompleteProfiles,
+        fieldCoverage,
+        suggestions: limitedSuggestions,
+        badges,
+        incompleteMembers: personScores
+          .filter(p => p.completeness < 80)
+          .sort((a, b) => a.completeness - b.completeness)
+          .slice(0, 20),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/family-trees/:treeId/badges - Get badge progress
+familyTreesRouter.get('/:treeId/badges', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'VIEWER');
+
+    // Get counts for badge calculation
+    const [peopleCount, photoCount, storyCount, relationshipCount] = await Promise.all([
+      prisma.person.count({ where: { treeId } }),
+      prisma.treePhoto.count({ where: { treeId } }),
+      prisma.familyStory.count({ where: { treeId } }),
+      prisma.relationship.count({ where: { treeId } }),
+    ]);
+
+    // Get people for generation calculation
+    const people = await prisma.person.findMany({
+      where: { treeId },
+      select: {
+        birthDate: true,
+        firstName: true,
+        lastName: true,
+        profilePhotoUrl: true,
+        biography: true,
+        occupation: true,
+        birthPlace: true,
+        deathDate: true,
+        deathPlace: true,
+        isLiving: true,
+      },
+    });
+
+    // Calculate average completeness
+    const completenessScores = people.map(p => calculatePersonCompleteness(p).score);
+    const averageCompleteness = completenessScores.length > 0
+      ? Math.round(completenessScores.reduce((a, b) => a + b, 0) / completenessScores.length)
+      : 0;
+
+    // Estimate generations (rough: 25-year spans)
+    const years = people
+      .map(p => p.birthDate ? new Date(p.birthDate).getFullYear() : null)
+      .filter((y): y is number => y !== null);
+    const yearSpan = years.length > 1 ? Math.max(...years) - Math.min(...years) : 0;
+    const generationCount = Math.max(1, Math.ceil(yearSpan / 25));
+
+    const badgeMetrics = {
+      photos: photoCount,
+      stories: storyCount,
+      members: peopleCount,
+      relationships: relationshipCount,
+      generations: generationCount,
+      completeness: averageCompleteness,
+      yearSpan,
+    };
+
+    const badges = BADGE_DEFINITIONS.map(badge => {
+      const progress = badgeMetrics[badge.requirementType as keyof typeof badgeMetrics] || 0;
+      return {
+        ...badge,
+        progress,
+        earned: progress >= badge.requirement,
+        earnedAt: progress >= badge.requirement ? new Date().toISOString() : undefined,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: badges,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================
+// DNA INTEGRATION ENDPOINTS (US-FT-8.2)
+// ============================================================
+
+// DNA data validation schema
+const dnaDataSchema = z.object({
+  dnaTestProvider: z.string().max(100).nullable().optional(),
+  dnaTestDate: z.string().datetime().nullable().optional(),
+  yDnaHaplogroup: z.string().max(50).nullable().optional(),
+  mtDnaHaplogroup: z.string().max(50).nullable().optional(),
+  dnaKitNumber: z.string().max(100).nullable().optional(),
+  dnaEthnicityNotes: z.string().max(2000).nullable().optional(),
+  dnaMatchNotes: z.string().max(2000).nullable().optional(),
+  dnaPrivacy: z.enum(['PRIVATE', 'FAMILY_ONLY']).optional(),
+});
+
+// GET /api/family-trees/:treeId/people/:personId/dna - Get DNA information
+familyTreesRouter.get('/:treeId/people/:personId/dna', async (req, res, next) => {
+  try {
+    const { treeId, personId } = req.params;
+    const userId = getUserId(req);
+
+    const membership = await checkTreeAccess(treeId, userId, 'VIEWER');
+
+    // Get person with DNA data
+    const person = await prisma.person.findFirst({
+      where: { id: personId, treeId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        gender: true,
+        dnaTestProvider: true,
+        dnaTestDate: true,
+        yDnaHaplogroup: true,
+        mtDnaHaplogroup: true,
+        dnaKitNumber: true,
+        dnaEthnicityNotes: true,
+        dnaMatchNotes: true,
+        dnaPrivacy: true,
+      },
+    });
+
+    if (!person) {
+      throw new AppError('Person not found', 404);
+    }
+
+    // Check DNA privacy
+    const isAdmin = membership.role === 'ADMIN';
+    const isLinkedToPerson = membership.linkedPersonId === personId;
+    const canView = isAdmin || isLinkedToPerson || person.dnaPrivacy === 'FAMILY_ONLY';
+
+    if (!canView) {
+      // Return limited data
+      res.json({
+        success: true,
+        data: {
+          person: {
+            id: person.id,
+            firstName: person.firstName,
+            lastName: person.lastName,
+            gender: person.gender,
+          },
+          dnaData: null,
+          canView: false,
+          canEdit: false,
+        },
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        person: {
+          id: person.id,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          gender: person.gender,
+        },
+        dnaData: {
+          dnaTestProvider: person.dnaTestProvider,
+          dnaTestDate: person.dnaTestDate,
+          yDnaHaplogroup: person.yDnaHaplogroup,
+          mtDnaHaplogroup: person.mtDnaHaplogroup,
+          dnaKitNumber: person.dnaKitNumber,
+          dnaEthnicityNotes: person.dnaEthnicityNotes,
+          dnaMatchNotes: person.dnaMatchNotes,
+          dnaPrivacy: person.dnaPrivacy || 'PRIVATE',
+        },
+        canView: true,
+        canEdit: isAdmin || isLinkedToPerson,
+        isAdmin,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/family-trees/:treeId/people/:personId/dna - Update DNA information
+familyTreesRouter.put('/:treeId/people/:personId/dna', async (req, res, next) => {
+  try {
+    const { treeId, personId } = req.params;
+    const userId = getUserId(req);
+
+    const membership = await checkTreeAccess(treeId, userId, 'MEMBER');
+
+    // Verify person exists
+    const person = await prisma.person.findFirst({
+      where: { id: personId, treeId },
+      select: { id: true, dnaPrivacy: true },
+    });
+
+    if (!person) {
+      throw new AppError('Person not found', 404);
+    }
+
+    // Check edit permissions
+    const isAdmin = membership.role === 'ADMIN';
+    const isLinkedToPerson = membership.linkedPersonId === personId;
+
+    if (!isAdmin && !isLinkedToPerson) {
+      throw new AppError('You can only edit DNA information for yourself or as an admin', 403);
+    }
+
+    // Validate input
+    const data = dnaDataSchema.parse(req.body);
+
+    // Update DNA fields
+    const updated = await prisma.person.update({
+      where: { id: personId },
+      data: {
+        dnaTestProvider: data.dnaTestProvider,
+        dnaTestDate: data.dnaTestDate ? new Date(data.dnaTestDate) : null,
+        yDnaHaplogroup: data.yDnaHaplogroup,
+        mtDnaHaplogroup: data.mtDnaHaplogroup,
+        dnaKitNumber: data.dnaKitNumber,
+        dnaEthnicityNotes: data.dnaEthnicityNotes,
+        dnaMatchNotes: data.dnaMatchNotes,
+        dnaPrivacy: data.dnaPrivacy || 'PRIVATE',
+      },
+      select: {
+        id: true,
+        dnaTestProvider: true,
+        dnaTestDate: true,
+        yDnaHaplogroup: true,
+        mtDnaHaplogroup: true,
+        dnaKitNumber: true,
+        dnaEthnicityNotes: true,
+        dnaMatchNotes: true,
+        dnaPrivacy: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/family-trees/:treeId/people/:personId/dna - Clear DNA information
+familyTreesRouter.delete('/:treeId/people/:personId/dna', async (req, res, next) => {
+  try {
+    const { treeId, personId } = req.params;
+    const userId = getUserId(req);
+
+    const membership = await checkTreeAccess(treeId, userId, 'MEMBER');
+
+    // Verify person exists
+    const person = await prisma.person.findFirst({
+      where: { id: personId, treeId },
+      select: { id: true },
+    });
+
+    if (!person) {
+      throw new AppError('Person not found', 404);
+    }
+
+    // Check edit permissions
+    const isAdmin = membership.role === 'ADMIN';
+    const isLinkedToPerson = membership.linkedPersonId === personId;
+
+    if (!isAdmin && !isLinkedToPerson) {
+      throw new AppError('You can only delete DNA information for yourself or as an admin', 403);
+    }
+
+    // Clear all DNA fields
+    await prisma.person.update({
+      where: { id: personId },
+      data: {
+        dnaTestProvider: null,
+        dnaTestDate: null,
+        yDnaHaplogroup: null,
+        mtDnaHaplogroup: null,
+        dnaKitNumber: null,
+        dnaEthnicityNotes: null,
+        dnaMatchNotes: null,
+        dnaPrivacy: 'PRIVATE',
+      },
+    });
+
+    res.json({
+      success: true,
+      data: { deleted: true },
     });
   } catch (error) {
     next(error);

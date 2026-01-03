@@ -37,6 +37,9 @@ model User {
   authoredStories       FamilyStory[]    @relation("AuthoredStories")
   storyComments         StoryComment[]   @relation("StoryComments")
   likedStories          StoryLike[]      @relation("LikedStories")
+  mergesPerformed       PersonMerge[]    @relation("MergesPerformed")
+  mergesReverted        PersonMerge[]    @relation("MergesReverted")
+  activities            TreeActivity[]   @relation("ActivityActor")
 
   @@index([clerkId])
   @@index([email])
@@ -308,6 +311,12 @@ enum PersonPrivacy {
   PRIVATE
 }
 
+// DNA information privacy - defaults to most restrictive
+enum DnaPrivacy {
+  PRIVATE       // Only person and tree admins can view
+  FAMILY_ONLY   // All tree members can view
+}
+
 enum PhotoPrivacy {
   PUBLIC
   ALL_FAMILY
@@ -368,6 +377,8 @@ model FamilyTree {
   documents     SourceDocument[]
   stories       FamilyStory[]
   suggestions   Suggestion[]
+  merges        PersonMerge[]
+  activities    TreeActivity[]
 
   @@index([createdBy])
   @@index([privacy])
@@ -415,6 +426,17 @@ model Person {
   positionX     Float?
   positionY     Float?
   generation    Int            @default(0)
+
+  // DNA Integration (placeholder - no actual DNA data stored)
+  dnaTestProvider     String?       // e.g., "23andMe", "AncestryDNA", "MyHeritage"
+  dnaTestDate         DateTime?     // When DNA test was taken
+  yDnaHaplogroup      String?       // Y-chromosome haplogroup (males only)
+  mtDnaHaplogroup     String?       // Mitochondrial haplogroup
+  dnaKitNumber        String?       // Optional kit number for reference
+  dnaEthnicityNotes   String?       // Free-form notes about ethnicity results
+  dnaMatchNotes       String?       // Notes about DNA matches (no PII)
+  dnaPrivacy          DnaPrivacy    @default(PRIVATE)
+
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -758,4 +780,135 @@ model Suggestion {
   @@index([suggesterId])
   @@index([status])
   @@index([treeId, status])
+}
+
+// ==========================================
+// Person Merge History (for undo capability)
+// ==========================================
+
+enum MergeStatus {
+  COMPLETED       // Merge is active
+  REVERTED        // Merge was undone
+  EXPIRED         // Past the 30-day undo window
+}
+
+model PersonMerge {
+  id              String       @id @default(cuid())
+  treeId          String
+  primaryPersonId String       // The person that remains after merge
+  mergedPersonId  String       // The person that was merged (deleted)
+  performedById   String       // User who performed the merge
+  status          MergeStatus  @default(COMPLETED)
+
+  // Store complete backup data for undo
+  mergedPersonData    Json     // Full person record before deletion
+  transferredRelations Json    // Relationships that were transferred
+  transferredMarriages Json    // Marriages that were transferred
+  transferredPhotos    Json    // Photo IDs that were transferred
+  transferredDocuments Json    // Document IDs that were transferred
+  transferredStories   Json    // Story IDs that were transferred
+
+  // Field selection (which fields came from which person)
+  fieldSelections Json         // { fieldName: 'primary' | 'merged' }
+
+  // Metadata
+  createdAt       DateTime     @default(now())
+  expiresAt       DateTime     // 30 days from creation
+  revertedAt      DateTime?
+  revertedById    String?
+
+  // Relations
+  tree        FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  performedBy User       @relation("MergesPerformed", fields: [performedById], references: [id], onDelete: Cascade)
+  revertedBy  User?      @relation("MergesReverted", fields: [revertedById], references: [id], onDelete: SetNull)
+
+  @@index([treeId])
+  @@index([primaryPersonId])
+  @@index([mergedPersonId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+// ==========================================
+// Activity Feed (US-FT-6.3)
+// ==========================================
+
+enum ActivityType {
+  // Member activities
+  MEMBER_JOINED       // New member joined the tree
+  MEMBER_LEFT         // Member left or was removed
+  MEMBER_ROLE_CHANGED // Member's role was changed
+
+  // Person activities
+  PERSON_ADDED        // New person added to tree
+  PERSON_UPDATED      // Person details updated
+  PERSON_DELETED      // Person removed from tree
+  PERSON_MERGED       // Two persons were merged
+
+  // Relationship activities
+  RELATIONSHIP_ADDED  // New relationship created
+  RELATIONSHIP_REMOVED // Relationship removed
+  MARRIAGE_ADDED      // Marriage record added
+  MARRIAGE_REMOVED    // Marriage record removed
+
+  // Content activities
+  PHOTO_UPLOADED      // New photo uploaded
+  PHOTO_DELETED       // Photo deleted
+  DOCUMENT_UPLOADED   // New document uploaded
+  DOCUMENT_APPROVED   // Document was approved
+  DOCUMENT_REJECTED   // Document was rejected
+  STORY_PUBLISHED     // Story was published
+  STORY_UPDATED       // Story was updated
+
+  // Suggestion activities
+  SUGGESTION_MADE     // New suggestion submitted
+  SUGGESTION_APPROVED // Suggestion was approved
+  SUGGESTION_REJECTED // Suggestion was rejected
+
+  // Tree activities
+  TREE_UPDATED        // Tree settings changed
+  TREE_PRIVACY_CHANGED // Tree privacy setting changed
+}
+
+model TreeActivity {
+  id          String       @id @default(cuid())
+  treeId      String
+  actorId     String       // User who performed the action
+  type        ActivityType
+
+  // Target references (nullable based on activity type)
+  targetPersonId    String?     // Person affected
+  targetUserId      String?     // User affected (for member events)
+  targetPhotoId     String?     // Photo affected
+  targetDocumentId  String?     // Document affected
+  targetStoryId     String?     // Story affected
+
+  // Activity details stored as JSON for flexibility
+  metadata    Json         @default("{}")  // Additional context (e.g., old/new values, names)
+
+  // Privacy - some activities should be hidden from non-admins
+  isPrivate   Boolean      @default(false)
+
+  // Tracking
+  createdAt   DateTime     @default(now())
+
+  // Relations
+  tree        FamilyTree   @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  actor       User         @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([treeId, createdAt(sort: Desc)])
+  @@index([treeId, type])
+  @@index([actorId])
+  @@index([targetPersonId])
+  @@index([createdAt])
+}
+
+model ActivityReadStatus {
+  id         String   @id @default(cuid())
+  treeId     String
+  userId     String
+  lastSeenAt DateTime @default(now())
+
+  @@unique([treeId, userId])
+  @@index([userId])
 }
