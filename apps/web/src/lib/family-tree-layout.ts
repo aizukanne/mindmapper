@@ -582,7 +582,11 @@ export function computeFamilyTreeLayout(
   relationships: Relationship[],
   options: Partial<LayoutOptions> = {}
 ): TreeLayout {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  // Filter out undefined values so they don't overwrite defaults
+  const filteredOptions = Object.fromEntries(
+    Object.entries(options).filter(([, value]) => value !== undefined)
+  ) as Partial<LayoutOptions>;
+  const opts = { ...DEFAULT_OPTIONS, ...filteredOptions };
 
   console.log('[Layout] Starting layout computation', { peopleCount: people.length, relationshipsCount: relationships.length });
 
