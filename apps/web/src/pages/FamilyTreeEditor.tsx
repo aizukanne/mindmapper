@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, Image, Upload, Edit2 } from 'lucide-react';
+import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, Image, Upload, Edit2, LayoutGrid, GitBranch } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { useTreePermissions } from '@/hooks/useTreePermissions';
 import { MemberManagementModal } from '@/components/family-tree/MemberManagementModal';
 import { PhotoPrivacySettings } from '@/components/tree/PhotoPrivacySettings';
+import { FamilyTreeCanvas } from '@/components/tree/FamilyTreeCanvas';
 import { calculateAge } from '@/lib/dateUtils';
 import type { FamilyTree, Person, Relationship, RelationshipType, TreeRole, TreePhoto } from '@mindmapper/types';
 
@@ -63,6 +64,7 @@ export default function FamilyTreeEditor() {
   const [isAddChildModalOpen, setIsAddChildModalOpen] = useState(false);
   const [isAddSpouseModalOpen, setIsAddSpouseModalOpen] = useState(false);
   const [isAddSiblingModalOpen, setIsAddSiblingModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'canvas' | 'grid'>('canvas');
 
   // Get user's role in this tree (use server-computed values if available)
   const userRole = tree?._currentUser?.role || null;
@@ -239,6 +241,29 @@ export default function FamilyTreeEditor() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* View Toggle */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            <Button
+              variant={viewMode === 'canvas' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('canvas')}
+              className="flex items-center gap-1.5"
+              title="Tree View"
+            >
+              <GitBranch className="w-4 h-4" />
+              Tree
+            </Button>
+            <Button
+              variant={viewMode === 'grid' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('grid')}
+              className="flex items-center gap-1.5"
+              title="Grid View"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Grid
+            </Button>
+          </div>
           {permissions.canAddPeople && (
             <Button
               onClick={() => setIsAddPersonModalOpen(true)}
@@ -274,9 +299,9 @@ export default function FamilyTreeEditor() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-hidden">
         {tree.people.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full">
+          <div className="flex flex-col items-center justify-center h-full p-6">
             <Users className="w-16 h-16 text-gray-300 mb-4" />
             <h2 className="text-xl font-semibold text-gray-600 mb-2">No people in this tree yet</h2>
             <p className="text-gray-500 mb-6">
@@ -294,8 +319,20 @@ export default function FamilyTreeEditor() {
               </Button>
             )}
           </div>
+        ) : viewMode === 'canvas' ? (
+          /* Canvas/Tree View */
+          <FamilyTreeCanvas
+            treeId={tree.id}
+            people={tree.people}
+            relationships={tree.relationships}
+            selectedPersonId={selectedPerson?.id}
+            onPersonClick={(person) => setSelectedPerson(person as PersonWithRelationships)}
+            onBackgroundClick={() => setSelectedPerson(null)}
+            className="w-full h-full"
+          />
         ) : (
-          <div className="max-w-6xl mx-auto">
+          /* Grid View */
+          <div className="max-w-6xl mx-auto p-6 overflow-auto h-full">
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold">Family Members</h2>
@@ -418,6 +455,8 @@ export default function FamilyTreeEditor() {
         <AddChildModal
           parentPerson={selectedPerson}
           treeId={treeId!}
+          allPeople={tree.people}
+          relationships={tree.relationships}
           onClose={() => setIsAddChildModalOpen(false)}
           onSuccess={() => {
             setIsAddChildModalOpen(false);
@@ -1885,6 +1924,8 @@ interface AddRelationshipModalProps {
 interface AddChildModalProps {
   parentPerson: Person;
   treeId: string;
+  allPeople: Person[];
+  relationships: Relationship[];
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -1896,7 +1937,7 @@ interface AddSpouseModalProps {
   onSuccess: () => void;
 }
 
-function AddChildModal({ parentPerson, treeId, onClose, onSuccess }: AddChildModalProps) {
+function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose, onSuccess }: AddChildModalProps) {
   const initialFormData = {
     firstName: '',
     middleName: '',
@@ -1908,12 +1949,51 @@ function AddChildModal({ parentPerson, treeId, onClose, onSuccess }: AddChildMod
     birthDate: '',
     birthPlace: '',
     isLiving: true,
-    isPlaceholder: false, // If true, creates child without email requirement
+    isPlaceholder: false,
   };
 
   const [formData, setFormData] = useState(initialFormData);
   const [loading, setLoading] = useState(false);
   const [childrenAdded, setChildrenAdded] = useState(0);
+  const [secondParentId, setSecondParentId] = useState<string>('');
+  const [childType, setChildType] = useState<'BIOLOGICAL' | 'ADOPTED' | 'STEP' | 'FOSTER'>('BIOLOGICAL');
+
+  // Find spouses of the parent person
+  const spouses = relationships
+    .filter(r =>
+      r.relationshipType === 'SPOUSE' &&
+      (r.personFromId === parentPerson.id || r.personToId === parentPerson.id)
+    )
+    .map(r => {
+      const spouseId = r.personFromId === parentPerson.id ? r.personToId : r.personFromId;
+      return allPeople.find(p => p.id === spouseId);
+    })
+    .filter((p): p is Person => p !== undefined);
+
+  // Find existing children of BOTH parents (to create sibling relationships)
+  const getExistingSiblings = (secondParent: string | null) => {
+    // Get children of primary parent
+    const primaryParentChildren = relationships
+      .filter(r => r.relationshipType === 'CHILD' && r.personFromId === parentPerson.id)
+      .map(r => r.personToId);
+
+    if (!secondParent) {
+      // If no second parent, just return children of primary parent
+      return primaryParentChildren;
+    }
+
+    // Get children of second parent
+    const secondParentChildren = relationships
+      .filter(r => r.relationshipType === 'CHILD' && r.personFromId === secondParent)
+      .map(r => r.personToId);
+
+    // Find children that have BOTH parents (full siblings)
+    const fullSiblings = primaryParentChildren.filter(childId =>
+      secondParentChildren.includes(childId)
+    );
+
+    return fullSiblings;
+  };
 
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false) => {
     e.preventDefault();
@@ -1928,7 +2008,7 @@ function AddChildModal({ parentPerson, treeId, onClose, onSuccess }: AddChildMod
         credentials: 'include',
         body: JSON.stringify({
           ...formData,
-          generation: parentPerson.generation + 1, // Child is one generation below parent
+          generation: parentPerson.generation + 1,
           birthDate: formData.birthDate || undefined,
         }),
       });
@@ -1943,29 +2023,80 @@ function AddChildModal({ parentPerson, treeId, onClose, onSuccess }: AddChildMod
       const personData = await personResponse.json();
       const newChild = personData.data;
 
-      // Create the parent-child relationship
-      const relationshipResponse = await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
+      // Determine relationship type based on child type
+      const relationshipType = childType === 'BIOLOGICAL' ? 'CHILD' :
+                               childType === 'ADOPTED' ? 'ADOPTIVE_CHILD' :
+                               childType === 'STEP' ? 'STEP_CHILD' : 'FOSTER_CHILD';
+
+      // Create relationship with primary parent
+      const primaryRelResponse = await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           personFromId: parentPerson.id,
           personToId: newChild.id,
-          relationshipType: 'CHILD',
+          relationshipType,
         }),
       });
 
-      if (!relationshipResponse.ok) {
-        const error = await relationshipResponse.json();
-        alert(error.message || 'Child created but failed to establish relationship');
+      if (!primaryRelResponse.ok) {
+        const error = await primaryRelResponse.json();
+        alert(error.message || 'Child created but failed to establish relationship with first parent');
         setLoading(false);
         return;
+      }
+
+      // Create relationship with second parent if selected
+      if (secondParentId) {
+        const secondRelResponse = await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            personFromId: secondParentId,
+            personToId: newChild.id,
+            relationshipType,
+          }),
+        });
+
+        if (!secondRelResponse.ok) {
+          console.error('Failed to create relationship with second parent');
+          // Continue anyway - primary relationship was created
+        }
+      }
+
+      // Create sibling relationships with existing children who share the same parents
+      const existingSiblings = getExistingSiblings(secondParentId || null);
+      const siblingType = childType === 'BIOLOGICAL' ? 'SIBLING' :
+                         childType === 'STEP' ? 'STEP_SIBLING' : 'SIBLING';
+
+      for (const siblingId of existingSiblings) {
+        if (siblingId === newChild.id) continue; // Skip self
+
+        try {
+          await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              personFromId: newChild.id,
+              personToId: siblingId,
+              relationshipType: siblingType,
+              notes: childType === 'BIOLOGICAL' ? 'Full sibling' :
+                     childType === 'STEP' ? 'Step-sibling' :
+                     childType === 'ADOPTED' ? 'Adoptive sibling' : 'Foster sibling',
+            }),
+          });
+        } catch (err) {
+          console.error(`Failed to create sibling relationship with ${siblingId}:`, err);
+          // Continue with other siblings
+        }
       }
 
       setChildrenAdded(prev => prev + 1);
 
       if (addAnother) {
-        // Reset form for next child, keeping last name and placeholder setting
         setFormData({
           ...initialFormData,
           lastName: formData.lastName,
@@ -1998,6 +2129,62 @@ function AddChildModal({ parentPerson, treeId, onClose, onSuccess }: AddChildMod
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Parents Selection */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Parents</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">First Parent</label>
+                <div className="px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-700">
+                  {parentPerson.firstName} {parentPerson.lastName}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Second Parent</label>
+                <select
+                  value={secondParentId}
+                  onChange={(e) => setSecondParentId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">-- No second parent --</option>
+                  {spouses.map((spouse) => (
+                    <option key={spouse.id} value={spouse.id}>
+                      {spouse.firstName} {spouse.lastName}
+                    </option>
+                  ))}
+                </select>
+                {spouses.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    No spouses found. Add a spouse first to select a second parent.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Child Type Selection */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Relationship Type</h3>
+            <div className="grid grid-cols-4 gap-2">
+              {(['BIOLOGICAL', 'ADOPTED', 'STEP', 'FOSTER'] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setChildType(type)}
+                  className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                    childType === type
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {type === 'BIOLOGICAL' ? 'Biological' :
+                   type === 'ADOPTED' ? 'Adopted' :
+                   type === 'STEP' ? 'Step' : 'Foster'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Basic Information */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Basic Information</h3>
@@ -2129,6 +2316,15 @@ function AddChildModal({ parentPerson, treeId, onClose, onSuccess }: AddChildMod
               </div>
             </div>
           </div>
+
+          {/* Info about automatic sibling creation */}
+          {secondParentId && getExistingSiblings(secondParentId).length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-800">
+                <strong>Note:</strong> This child will automatically be linked as a sibling to the {getExistingSiblings(secondParentId).length} existing child{getExistingSiblings(secondParentId).length !== 1 ? 'ren' : ''} of both parents.
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-3 pt-4 border-t">
             <Button
