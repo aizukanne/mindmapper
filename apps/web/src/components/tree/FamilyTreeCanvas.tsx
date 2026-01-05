@@ -113,6 +113,19 @@ export function FamilyTreeCanvas({
     compact,
   });
 
+  // Debug logging
+  console.log('[FamilyTreeCanvas] Debug:', {
+    peopleCount: people.length,
+    filteredPeopleCount: filteredPeople.length,
+    relationshipsCount: relationships.length,
+    filteredRelationshipsCount: filteredRelationships.length,
+    hasLayout: !!layout,
+    nodesCount: layout?.nodes.size ?? 0,
+    bounds: layout?.bounds,
+    generationFilter,
+    isIsolated,
+  });
+
   // Get selected person object
   const selectedPerson = useMemo(() => {
     if (!selectedPersonId) return null;
