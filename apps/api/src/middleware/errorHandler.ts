@@ -15,9 +15,18 @@ export function errorHandler(
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _next: NextFunction
 ) {
-  console.error('Error:', err);
+  // Safely log the error (avoid circular reference issues)
+  try {
+    console.error('Error:', err.message || String(err));
+    if (err.stack) {
+      console.error('Stack:', err.stack);
+    }
+  } catch (logErr) {
+    console.error('Error logging failed:', String(err));
+  }
 
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({

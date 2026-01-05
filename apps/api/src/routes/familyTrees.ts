@@ -450,40 +450,48 @@ familyTreesRouter.get('/:treeId/people', async (req, res, next) => {
 familyTreesRouter.post('/:treeId/people', async (req, res, next) => {
   try {
     const { treeId } = req.params;
+    console.log('[POST /people] Request body:', JSON.stringify(req.body, null, 2));
+
     const data = createPersonSchema.parse(req.body);
+    console.log('[POST /people] Validated data:', JSON.stringify(data, null, 2));
+
     const userId = getUserId(req);
+    console.log('[POST /people] User ID:', userId);
 
     await checkTreeAccess(treeId, userId, 'MEMBER');
+    console.log('[POST /people] Access check passed');
 
     const person = await prisma.person.create({
       data: {
         treeId,
         firstName: data.firstName,
-        middleName: data.middleName,
+        middleName: data.middleName || null,
         lastName: data.lastName,
-        maidenName: data.maidenName,
-        suffix: data.suffix,
-        nickname: data.nickname,
+        maidenName: data.maidenName || null,
+        suffix: data.suffix || null,
+        nickname: data.nickname || null,
         gender: data.gender,
         birthDate: data.birthDate ? new Date(data.birthDate) : null,
-        birthPlace: data.birthPlace,
+        birthPlace: data.birthPlace || null,
         deathDate: data.deathDate ? new Date(data.deathDate) : null,
-        deathPlace: data.deathPlace,
-        isLiving: data.isLiving,
-        biography: data.biography,
-        occupation: data.occupation,
-        education: data.education,
-        privacy: data.privacy,
-        profilePhoto: data.profilePhoto,
-        generation: data.generation,
+        deathPlace: data.deathPlace || null,
+        isLiving: data.isLiving ?? true,
+        biography: data.biography || null,
+        occupation: data.occupation || null,
+        education: data.education || null,
+        privacy: data.privacy || 'PUBLIC',
+        profilePhoto: data.profilePhoto || null,
+        generation: data.generation ?? 0,
       },
     });
+    console.log('[POST /people] Person created:', person.id);
 
     res.status(201).json({
       success: true,
       data: person,
     });
   } catch (error) {
+    console.error('[POST /people] Error:', error instanceof Error ? error.message : String(error));
     next(error);
   }
 });
