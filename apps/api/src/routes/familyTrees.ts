@@ -113,9 +113,9 @@ const createRelationshipSchema = z.object({
 
 const createMarriageSchema = z.object({
   spouseIds: z.array(z.string().cuid()).length(2),
-  marriageDate: z.string().datetime().optional(),
+  marriageDate: dateStringSchema,
   marriagePlace: z.string().optional(),
-  divorceDate: z.string().datetime().optional(),
+  divorceDate: dateStringSchema,
   divorcePlace: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -3060,7 +3060,7 @@ const createDocumentSchema = z.object({
   personId: z.string().optional(),
   notes: z.string().max(5000).optional(),
   citation: z.string().max(1000).optional(),
-  dateOnDocument: z.string().datetime().optional(),
+  dateOnDocument: dateStringSchema,
   url: z.string().url().optional(),
   hasWatermark: z.boolean().optional(),
 });
@@ -7018,7 +7018,7 @@ familyTreesRouter.get('/:treeId/badges', async (req, res, next) => {
 // DNA data validation schema
 const dnaDataSchema = z.object({
   dnaTestProvider: z.string().max(100).nullable().optional(),
-  dnaTestDate: z.string().datetime().nullable().optional(),
+  dnaTestDate: dateStringSchema.nullable(),
   yDnaHaplogroup: z.string().max(50).nullable().optional(),
   mtDnaHaplogroup: z.string().max(50).nullable().optional(),
   dnaKitNumber: z.string().max(100).nullable().optional(),
