@@ -271,13 +271,34 @@ export function FamilyTreeCanvas({
   }
 
   // Check if layout is valid and has nodes
+  // Debug: test Number.isFinite behavior
+  if (layout && layout.nodes.size > 0) {
+    const firstNode = Array.from(layout.nodes.values())[0];
+    console.log('[FamilyTreeCanvas] First node check:', {
+      x: firstNode.x,
+      y: firstNode.y,
+      xIsFinite: Number.isFinite(firstNode.x),
+      yIsFinite: Number.isFinite(firstNode.y),
+      xRaw: JSON.stringify(firstNode.x),
+      yRaw: JSON.stringify(firstNode.y),
+    });
+  }
+
   const hasValidNodes = layout && layout.nodes.size > 0 &&
     Array.from(layout.nodes.values()).some(n => Number.isFinite(n.x) && Number.isFinite(n.y));
 
   // Extra debug for node issues
   if (layout && layout.nodes.size > 0 && !hasValidNodes) {
-    console.warn('[FamilyTreeCanvas] Nodes exist but none have valid positions:',
-      Array.from(layout.nodes.values()).map(n => ({ id: n.id, x: n.x, y: n.y })));
+    const nodeDetails = Array.from(layout.nodes.values()).map(n => ({
+      id: n.id.slice(0, 8),
+      x: n.x,
+      y: n.y,
+      xType: typeof n.x,
+      yType: typeof n.y,
+      xFinite: Number.isFinite(n.x),
+      yFinite: Number.isFinite(n.y),
+    }));
+    console.warn('[FamilyTreeCanvas] Nodes exist but none have valid positions:', nodeDetails);
   }
 
   // Debug the actual condition being checked

@@ -268,6 +268,7 @@ function positionNodes(
   for (const gen of sortedGens) {
     const genPeople = genGroups.get(gen) || [];
     const y = gen * (options.nodeHeight + options.verticalSpacing);
+    console.log('[Layout] Processing generation', { gen, genType: typeof gen, y, yType: typeof y, genPeopleCount: genPeople.length });
 
     // Group by spouse units and sort by parent positions
     const unitsInGen: Array<{ unit: string[]; parentX: number }> = [];
@@ -613,7 +614,8 @@ export function computeFamilyTreeLayout(
   );
   console.log('[Layout] Nodes positioned', {
     nodesSize: nodes.size,
-    sampleNodes: Array.from(nodes.values()).slice(0, 3).map(n => ({ id: n.id, x: n.x, y: n.y })),
+    sampleNodes: Array.from(nodes.values()).slice(0, 3).map(n => ({ id: n.id, x: n.x, y: n.y, xType: typeof n.x, yType: typeof n.y })),
+    allNodePositions: Array.from(nodes.values()).map(n => ({ id: n.id.slice(0, 8), x: n.x, y: n.y })),
   });
 
   // Fallback: if no nodes were created despite having people, create a simple grid layout
