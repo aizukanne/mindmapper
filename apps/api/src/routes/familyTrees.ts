@@ -337,9 +337,23 @@ familyTreesRouter.get('/:id', async (req, res, next) => {
       },
     });
 
+    // Determine the current user's role
+    const isCreator = tree?.createdBy === userId;
+    const membership = tree?.members.find(m => m.userId === userId);
+    const userRole = isCreator ? 'ADMIN' : (membership?.role || null);
+
     res.json({
       success: true,
-      data: tree,
+      data: {
+        ...tree,
+        // Include current user context for frontend permissions
+        _currentUser: {
+          userId,
+          isCreator,
+          role: userRole,
+          memberId: membership?.id || null,
+        },
+      },
     });
   } catch (error) {
     next(error);

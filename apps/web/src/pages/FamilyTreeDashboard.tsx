@@ -25,7 +25,7 @@ interface FamilyTreeWithDetails extends FamilyTree {
       avatarUrl: string | null;
     };
   }>;
-  _count: {
+  _count?: {
     people: number;
   };
 }
@@ -184,7 +184,7 @@ export default function FamilyTreeDashboard() {
 
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <Users className="w-4 h-4" />
-                      <span>{tree._count.people} people</span>
+                      <span>{tree._count?.people ?? 0} people</span>
                     </div>
 
                     <div className="flex items-center gap-2 text-sm text-gray-600">

@@ -45,8 +45,15 @@ cd mindmapper
 # Install dependencies
 pnpm install
 
+# Copy environment file and configure
+cp .env.example .env
+# Edit .env with your settings (see Environment Variables section)
+
 # Start Docker services (PostgreSQL + Redis)
 cd docker && docker compose up -d && cd ..
+
+# Set DATABASE_URL for Prisma commands
+export DATABASE_URL="postgresql://mindmapper:mindmapper_dev@localhost:5432/mindmapper"
 
 # Setup database
 pnpm --filter @mindmapper/db db:generate
@@ -55,6 +62,8 @@ pnpm --filter @mindmapper/db db:push
 # Start development servers
 pnpm dev
 ```
+
+> **Note**: The `export DATABASE_URL=...` step is required because Prisma needs the database connection string. You can also add this to your shell profile (`~/.bashrc` or `~/.zshrc`) to make it permanent.
 
 ### Access the Application
 

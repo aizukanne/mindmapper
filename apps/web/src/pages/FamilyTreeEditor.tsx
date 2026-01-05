@@ -40,6 +40,12 @@ interface FamilyTreeWithData extends FamilyTree {
     role: TreeRole;
     userId: string;
   }>;
+  _currentUser?: {
+    userId: string;
+    isCreator: boolean;
+    role: TreeRole | null;
+    memberId: string | null;
+  };
 }
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -58,10 +64,9 @@ export default function FamilyTreeEditor() {
   const [isAddSpouseModalOpen, setIsAddSpouseModalOpen] = useState(false);
   const [isAddSiblingModalOpen, setIsAddSiblingModalOpen] = useState(false);
 
-  // Get user's role in this tree
-  const userMember = tree?.members.find(m => m.userId === userId);
-  const userRole = userMember?.role || null;
-  const isCreator = tree?.createdBy === userId;
+  // Get user's role in this tree (use server-computed values if available)
+  const userRole = tree?._currentUser?.role || null;
+  const isCreator = tree?._currentUser?.isCreator ?? false;
 
   // Get permissions
   const permissions = useTreePermissions({
