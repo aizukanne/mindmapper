@@ -67,7 +67,8 @@ const createPersonSchema = z.object({
   privacy: z.enum(['PUBLIC', 'FAMILY_ONLY', 'PRIVATE']).default('PUBLIC'),
   profilePhoto: z.string().url().optional(),
   generation: z.number().int().default(0),
-});
+  isPlaceholder: z.boolean().optional(), // For placeholder/unknown persons
+}).passthrough(); // Allow extra fields
 
 const updatePersonSchema = createPersonSchema.partial();
 
@@ -1309,12 +1310,12 @@ familyTreesRouter.post('/:treeId/photos', upload.single('photo'), async (req, re
   }
 });
 
-// GET /api/family-trees/:treeId/photos - List all photos in tree
-familyTreesRouter.get('/:treeId/photos', async (req, res, next) => {
+// Handler for listing photos (shared between routes)
+async function handleListPhotos(req: Request, res: import('express').Response, next: import('express').NextFunction, personIdOverride?: string) {
   try {
     const { treeId } = req.params;
     const {
-      personId,
+      personId: queryPersonId,
       startDate,
       endDate,
       sortBy = 'createdAt',
@@ -1322,6 +1323,7 @@ familyTreesRouter.get('/:treeId/photos', async (req, res, next) => {
       limit = '50',
       offset = '0',
     } = req.query;
+    const personId = personIdOverride || queryPersonId;
     const userId = getUserId(req);
 
     await checkTreeAccess(treeId, userId);
@@ -1409,6 +1411,17 @@ familyTreesRouter.get('/:treeId/photos', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+}
+
+// GET /api/family-trees/:treeId/people/:personId/photos - List photos for a specific person
+// This route exists because the frontend expects this URL pattern
+familyTreesRouter.get('/:treeId/people/:personId/photos', async (req, res, next) => {
+  return handleListPhotos(req, res, next, req.params.personId);
+});
+
+// GET /api/family-trees/:treeId/photos - List all photos in tree
+familyTreesRouter.get('/:treeId/photos', async (req, res, next) => {
+  return handleListPhotos(req, res, next);
 });
 
 // PATCH /api/family-trees/:treeId/photos/:photoId/privacy - Update photo privacy
@@ -5937,7 +5950,7 @@ export async function recordActivity(input: RecordActivityInput): Promise<void> 
         targetPhotoId: input.targetPhotoId || null,
         targetDocumentId: input.targetDocumentId || null,
         targetStoryId: input.targetStoryId || null,
-        metadata: input.metadata || {},
+        metadata: (input.metadata || {}) as Prisma.InputJsonValue,
         isPrivate: input.isPrivate || false,
       },
     });
@@ -6240,7 +6253,7 @@ familyTreesRouter.post(
       const treeId = req.body.treeId as string | undefined;
 
       if (!req.file) {
-        throw new AppError('No file uploaded', 400);
+        throw new AppError(400, 'No file uploaded');
       }
 
       // If importing to existing tree, check access
@@ -6288,17 +6301,17 @@ familyTreesRouter.post('/import/gedcom/confirm', async (req, res, next) => {
     const { previewId, treeName, treeDescription, treePrivacy } = req.body;
 
     if (!previewId) {
-      throw new AppError('Preview ID is required', 400);
+      throw new AppError(400, 'Preview ID is required');
     }
 
     // Get cached preview data
     const cached = gedcomPreviewCache.get(previewId);
     if (!cached) {
-      throw new AppError('Preview expired or not found. Please upload the file again.', 404);
+      throw new AppError(404, 'Preview expired or not found. Please upload the file again.');
     }
 
     if (cached.userId !== userId) {
-      throw new AppError('Unauthorized', 403);
+      throw new AppError(403, 'Unauthorized');
     }
 
     const { result, treeId: existingTreeId } = cached;
@@ -6381,13 +6394,14 @@ familyTreesRouter.post('/import/gedcom/confirm', async (req, res, next) => {
             await tx.marriage.create({
               data: {
                 treeId,
-                person1Id: husbandDbId,
-                person2Id: wifeDbId,
                 marriageDate: fam.marriageDate ? new Date(fam.marriageDate) : null,
                 marriagePlace: fam.marriagePlace,
                 divorceDate: fam.divorceDate ? new Date(fam.divorceDate) : null,
                 divorcePlace: fam.divorcePlace,
-                status: fam.divorceDate ? 'DIVORCED' : 'MARRIED',
+                notes: fam.divorceDate ? 'DIVORCED' : undefined,
+                spouses: {
+                  connect: [{ id: husbandDbId }, { id: wifeDbId }],
+                },
               },
             });
             stats.marriagesCreated++;
@@ -6407,9 +6421,9 @@ familyTreesRouter.post('/import/gedcom/confirm', async (req, res, next) => {
               await tx.relationship.create({
                 data: {
                   treeId,
-                  fromPersonId: husbandDbId,
-                  toPersonId: childDbId,
-                  type: 'BIOLOGICAL',
+                  personFromId: husbandDbId,
+                  personToId: childDbId,
+                  relationshipType: 'PARENT',
                 },
               });
               stats.relationshipsCreated++;
@@ -6424,9 +6438,9 @@ familyTreesRouter.post('/import/gedcom/confirm', async (req, res, next) => {
               await tx.relationship.create({
                 data: {
                   treeId,
-                  fromPersonId: wifeDbId,
-                  toPersonId: childDbId,
-                  type: 'BIOLOGICAL',
+                  personFromId: wifeDbId,
+                  personToId: childDbId,
+                  relationshipType: 'PARENT',
                 },
               });
               stats.relationshipsCreated++;
@@ -6477,11 +6491,11 @@ familyTreesRouter.delete('/import/gedcom/preview/:previewId', async (req, res, n
 
     const cached = gedcomPreviewCache.get(previewId);
     if (!cached) {
-      throw new AppError('Preview not found', 404);
+      throw new AppError(404, 'Preview not found');
     }
 
     if (cached.userId !== userId) {
-      throw new AppError('Unauthorized', 403);
+      throw new AppError(403, 'Unauthorized');
     }
 
     gedcomPreviewCache.delete(previewId);
@@ -6682,14 +6696,14 @@ function calculatePersonCompleteness(person: {
   deathPlace: string | null;
   biography: string | null;
   occupation: string | null;
-  profilePhotoUrl: string | null;
+  profilePhoto: string | null;
 }): { score: number; missingFields: string[] } {
   const fields = [
     { name: 'First Name', value: person.firstName, weight: 15 },
     { name: 'Last Name', value: person.lastName, weight: 15 },
     { name: 'Birth Date', value: person.birthDate, weight: 15 },
     { name: 'Birth Place', value: person.birthPlace, weight: 10 },
-    { name: 'Photo', value: person.profilePhotoUrl, weight: 10 },
+    { name: 'Photo', value: person.profilePhoto, weight: 10 },
     { name: 'Biography', value: person.biography, weight: 10 },
     { name: 'Occupation', value: person.occupation, weight: 5 },
   ];
@@ -6751,7 +6765,7 @@ familyTreesRouter.get('/:treeId/completeness', async (req, res, next) => {
         deathPlace: true,
         biography: true,
         occupation: true,
-        profilePhotoUrl: true,
+        profilePhoto: true,
       },
     });
 
@@ -6769,7 +6783,7 @@ familyTreesRouter.get('/:treeId/completeness', async (req, res, next) => {
       return {
         id: person.id,
         name: `${person.firstName} ${person.lastName}`.trim(),
-        photoUrl: person.profilePhotoUrl,
+        photoUrl: person.profilePhoto,
         completeness: score,
         missingFields,
       };
@@ -6782,7 +6796,7 @@ familyTreesRouter.get('/:treeId/completeness', async (req, res, next) => {
       birthDates: Math.round((people.filter(p => p.birthDate).length / totalPeople) * 100),
       deathDates: Math.round((people.filter(p => !p.isLiving && p.deathDate).length / deceasedCount) * 100),
       birthPlaces: Math.round((people.filter(p => p.birthPlace).length / totalPeople) * 100),
-      photos: Math.round((people.filter(p => p.profilePhotoUrl).length / totalPeople) * 100),
+      photos: Math.round((people.filter(p => p.profilePhoto).length / totalPeople) * 100),
       biographies: Math.round((people.filter(p => p.biography).length / totalPeople) * 100),
       occupations: Math.round((people.filter(p => p.occupation).length / totalPeople) * 100),
       relationships: relationshipCount > 0 ? Math.min(100, Math.round((relationshipCount / (totalPeople * 2)) * 100)) : 0,
@@ -6927,7 +6941,7 @@ familyTreesRouter.get('/:treeId/badges', async (req, res, next) => {
         birthDate: true,
         firstName: true,
         lastName: true,
-        profilePhotoUrl: true,
+        profilePhoto: true,
         biography: true,
         occupation: true,
         birthPlace: true,
@@ -7001,7 +7015,8 @@ familyTreesRouter.get('/:treeId/people/:personId/dna', async (req, res, next) =>
     const { treeId, personId } = req.params;
     const userId = getUserId(req);
 
-    const membership = await checkTreeAccess(treeId, userId, 'VIEWER');
+    const tree = await checkTreeAccess(treeId, userId, 'VIEWER');
+    const membership = tree.members[0];
 
     // Get person with DNA data
     const person = await prisma.person.findFirst({
@@ -7023,12 +7038,13 @@ familyTreesRouter.get('/:treeId/people/:personId/dna', async (req, res, next) =>
     });
 
     if (!person) {
-      throw new AppError('Person not found', 404);
+      throw new AppError(404, 'Person not found');
     }
 
     // Check DNA privacy
-    const isAdmin = membership.role === 'ADMIN';
-    const isLinkedToPerson = membership.linkedPersonId === personId;
+    const isCreator = tree.createdBy === userId;
+    const isAdmin = isCreator || membership?.role === 'ADMIN';
+    const isLinkedToPerson = membership?.linkedPersonId === personId;
     const canView = isAdmin || isLinkedToPerson || person.dnaPrivacy === 'FAMILY_ONLY';
 
     if (!canView) {
@@ -7085,7 +7101,8 @@ familyTreesRouter.put('/:treeId/people/:personId/dna', async (req, res, next) =>
     const { treeId, personId } = req.params;
     const userId = getUserId(req);
 
-    const membership = await checkTreeAccess(treeId, userId, 'MEMBER');
+    const tree = await checkTreeAccess(treeId, userId, 'MEMBER');
+    const membership = tree.members[0];
 
     // Verify person exists
     const person = await prisma.person.findFirst({
@@ -7094,15 +7111,16 @@ familyTreesRouter.put('/:treeId/people/:personId/dna', async (req, res, next) =>
     });
 
     if (!person) {
-      throw new AppError('Person not found', 404);
+      throw new AppError(404, 'Person not found');
     }
 
     // Check edit permissions
-    const isAdmin = membership.role === 'ADMIN';
-    const isLinkedToPerson = membership.linkedPersonId === personId;
+    const isCreator = tree.createdBy === userId;
+    const isAdmin = isCreator || membership?.role === 'ADMIN';
+    const isLinkedToPerson = membership?.linkedPersonId === personId;
 
     if (!isAdmin && !isLinkedToPerson) {
-      throw new AppError('You can only edit DNA information for yourself or as an admin', 403);
+      throw new AppError(403, 'You can only edit DNA information for yourself or as an admin');
     }
 
     // Validate input
@@ -7149,7 +7167,8 @@ familyTreesRouter.delete('/:treeId/people/:personId/dna', async (req, res, next)
     const { treeId, personId } = req.params;
     const userId = getUserId(req);
 
-    const membership = await checkTreeAccess(treeId, userId, 'MEMBER');
+    const tree = await checkTreeAccess(treeId, userId, 'MEMBER');
+    const membership = tree.members[0];
 
     // Verify person exists
     const person = await prisma.person.findFirst({
@@ -7158,15 +7177,16 @@ familyTreesRouter.delete('/:treeId/people/:personId/dna', async (req, res, next)
     });
 
     if (!person) {
-      throw new AppError('Person not found', 404);
+      throw new AppError(404, 'Person not found');
     }
 
     // Check edit permissions
-    const isAdmin = membership.role === 'ADMIN';
-    const isLinkedToPerson = membership.linkedPersonId === personId;
+    const isCreator = tree.createdBy === userId;
+    const isAdmin = isCreator || membership?.role === 'ADMIN';
+    const isLinkedToPerson = membership?.linkedPersonId === personId;
 
     if (!isAdmin && !isLinkedToPerson) {
-      throw new AppError('You can only delete DNA information for yourself or as an admin', 403);
+      throw new AppError(403, 'You can only delete DNA information for yourself or as an admin');
     }
 
     // Clear all DNA fields
