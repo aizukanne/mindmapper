@@ -254,6 +254,12 @@ function positionNodes(
 
   // Sort generations
   const sortedGens = Array.from(genGroups.keys()).sort((a, b) => a - b);
+  console.log('[Layout] positionNodes', {
+    genGroupsSize: genGroups.size,
+    sortedGens,
+    peopleCount: people.length,
+    generationsSize: generations.size,
+  });
 
   // Track positioned spouse units
   const positionedUnits = new Set<string>();
@@ -304,7 +310,10 @@ function positionNodes(
       for (let i = 0; i < unit.length; i++) {
         const personId = unit[i];
         const person = people.find(p => p.id === personId);
-        if (!person) continue;
+        if (!person) {
+          console.warn('[Layout] Person not found in people array:', personId);
+          continue;
+        }
 
         const x = currentX + i * (options.nodeWidth + options.spouseSpacing);
 
@@ -574,11 +583,23 @@ export function computeFamilyTreeLayout(
 ): TreeLayout {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
+  console.log('[Layout] Starting layout computation', { peopleCount: people.length, relationshipsCount: relationships.length });
+
   // Build relationship maps
   const { parentMap, childMap, spouseMap, siblingMap } = buildRelationshipMaps(relationships);
+  console.log('[Layout] Relationship maps built', {
+    parentMapSize: parentMap.size,
+    childMapSize: childMap.size,
+    spouseMapSize: spouseMap.size,
+    siblingMapSize: siblingMap.size,
+  });
 
   // Compute generations
   const generations = computeGenerations(people, parentMap, childMap);
+  console.log('[Layout] Generations computed', {
+    generationsSize: generations.size,
+    sampleGenerations: Array.from(generations.entries()).slice(0, 3),
+  });
 
   // Position nodes
   const nodes = positionNodes(
@@ -590,12 +611,40 @@ export function computeFamilyTreeLayout(
     siblingMap,
     opts
   );
+  console.log('[Layout] Nodes positioned', {
+    nodesSize: nodes.size,
+    sampleNodes: Array.from(nodes.values()).slice(0, 3).map(n => ({ id: n.id, x: n.x, y: n.y })),
+  });
+
+  // Fallback: if no nodes were created despite having people, create a simple grid layout
+  if (nodes.size === 0 && people.length > 0) {
+    console.warn('[Layout] No nodes created, falling back to grid layout');
+    const cols = Math.ceil(Math.sqrt(people.length));
+    people.forEach((person, index) => {
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      nodes.set(person.id, {
+        id: person.id,
+        person,
+        x: col * (opts.nodeWidth + opts.horizontalSpacing),
+        y: row * (opts.nodeHeight + opts.verticalSpacing),
+        width: opts.nodeWidth,
+        height: opts.nodeHeight,
+        generation: person.generation ?? 0,
+        spouseIds: [],
+        parentIds: [],
+        childIds: [],
+        siblingIds: [],
+      });
+    });
+  }
 
   // Generate edges
   const edges = generateEdges(nodes, relationships);
 
   // Calculate bounds
   const bounds = calculateBounds(nodes);
+  console.log('[Layout] Layout complete', { bounds, edgesCount: edges.length });
 
   // Build generation groups
   const genGroups = new Map<number, string[]>();

@@ -97,7 +97,7 @@ function PersonCardComponent({
   return (
     <div
       className={`
-        absolute rounded-lg border-2 shadow-sm cursor-pointer transition-all duration-200
+        rounded-lg border-2 shadow-sm cursor-pointer transition-all duration-200
         ${generationColor}
         ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 border-blue-500' : ''}
         ${isHighlighted ? 'ring-2 ring-yellow-400 ring-offset-1' : ''}

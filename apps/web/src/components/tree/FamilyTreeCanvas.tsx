@@ -124,6 +124,10 @@ export function FamilyTreeCanvas({
     bounds: layout?.bounds,
     generationFilter,
     isIsolated,
+    viewState,
+    containerSize,
+    validNodesCount: layout ? Array.from(layout.nodes.values()).filter(n => Number.isFinite(n.x) && Number.isFinite(n.y)).length : 0,
+    sampleNode: layout && layout.nodes.size > 0 ? Array.from(layout.nodes.values())[0] : null,
   });
 
   // Get selected person object
@@ -270,6 +274,21 @@ export function FamilyTreeCanvas({
   const hasValidNodes = layout && layout.nodes.size > 0 &&
     Array.from(layout.nodes.values()).some(n => Number.isFinite(n.x) && Number.isFinite(n.y));
 
+  // Extra debug for node issues
+  if (layout && layout.nodes.size > 0 && !hasValidNodes) {
+    console.warn('[FamilyTreeCanvas] Nodes exist but none have valid positions:',
+      Array.from(layout.nodes.values()).map(n => ({ id: n.id, x: n.x, y: n.y })));
+  }
+
+  // Debug the actual condition being checked
+  console.log('[FamilyTreeCanvas] Render check:', {
+    hasLayout: !!layout,
+    peopleLength: people.length,
+    hasValidNodes,
+    nodesSize: layout?.nodes.size ?? 0,
+    shouldShowEmpty: !layout || people.length === 0 || !hasValidNodes,
+  });
+
   if (!layout || people.length === 0 || !hasValidNodes) {
     return (
       <div className={`flex items-center justify-center h-full bg-gray-50 ${className}`}>
@@ -283,6 +302,11 @@ export function FamilyTreeCanvas({
             <p className="text-lg font-medium">Unable to layout tree</p>
             <p className="text-sm">Try switching to Grid view</p>
           </div>
+        ) : !hasValidNodes && layout && layout.nodes.size > 0 ? (
+          <div className="text-center text-gray-500">
+            <p className="text-lg font-medium">Layout has invalid node positions</p>
+            <p className="text-sm">Check console for details</p>
+          </div>
         ) : (
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
         )}
@@ -291,7 +315,7 @@ export function FamilyTreeCanvas({
   }
 
   return (
-    <div className={`relative overflow-hidden bg-gray-50 ${className}`} ref={containerRef}>
+    <div className={`relative overflow-hidden bg-gray-100 ${className}`} ref={containerRef}>
       {/* Toolbar */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-white rounded-lg shadow-md p-1">
         <Button variant="ghost" size="sm" onClick={zoomIn} title="Zoom In">
