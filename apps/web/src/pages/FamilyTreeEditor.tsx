@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, Image, Upload } from 'lucide-react';
+import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, Image, Upload, Edit2 } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/auth/UserMenu';
@@ -395,6 +395,7 @@ export default function FamilyTreeEditor() {
           canAddRelationships={permissions.canAddRelationships}
           canAddAncestors={permissions.canAddAncestors}
           canAddDescendants={permissions.canAddDescendants}
+          canEditPeople={permissions.canEditPeople}
         />
       )}
 
@@ -765,14 +766,82 @@ interface PersonDetailModalProps {
   canAddRelationships: boolean;
   canAddAncestors: boolean;
   canAddDescendants: boolean;
+  canEditPeople: boolean;
 }
 
-function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChild, onAddSpouse, onAddSibling, onRefresh, canAddRelationships, canAddAncestors, canAddDescendants }: PersonDetailModalProps) {
+function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChild, onAddSpouse, onAddSibling, onRefresh, canAddRelationships, canAddAncestors, canAddDescendants, canEditPeople }: PersonDetailModalProps) {
   const [updatingPrivacy, setUpdatingPrivacy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [photos, setPhotos] = useState<TreePhoto[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<TreePhoto | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    firstName: person.firstName,
+    middleName: person.middleName || '',
+    lastName: person.lastName,
+    maidenName: person.maidenName || '',
+    suffix: person.suffix || '',
+    nickname: person.nickname || '',
+    gender: person.gender,
+    birthDate: person.birthDate ? new Date(person.birthDate).toISOString().split('T')[0] : '',
+    birthPlace: person.birthPlace || '',
+    deathDate: person.deathDate ? new Date(person.deathDate).toISOString().split('T')[0] : '',
+    deathPlace: person.deathPlace || '',
+    isLiving: person.isLiving,
+    biography: person.biography || '',
+    occupation: person.occupation || '',
+    education: person.education || '',
+    privacy: person.privacy,
+    generation: person.generation,
+  });
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    try {
+      const data: Record<string, unknown> = {
+        firstName: editFormData.firstName,
+        lastName: editFormData.lastName,
+        gender: editFormData.gender,
+        isLiving: editFormData.isLiving,
+        privacy: editFormData.privacy,
+        generation: editFormData.generation,
+      };
+
+      if (editFormData.middleName) data.middleName = editFormData.middleName;
+      if (editFormData.maidenName) data.maidenName = editFormData.maidenName;
+      if (editFormData.suffix) data.suffix = editFormData.suffix;
+      if (editFormData.nickname) data.nickname = editFormData.nickname;
+      if (editFormData.birthDate) data.birthDate = editFormData.birthDate;
+      if (editFormData.birthPlace) data.birthPlace = editFormData.birthPlace;
+      if (editFormData.deathDate) data.deathDate = editFormData.deathDate;
+      if (editFormData.deathPlace) data.deathPlace = editFormData.deathPlace;
+      if (editFormData.biography) data.biography = editFormData.biography;
+      if (editFormData.occupation) data.occupation = editFormData.occupation;
+      if (editFormData.education) data.education = editFormData.education;
+
+      const response = await fetch(`${API_URL}/api/family-trees/${tree.id}/people/${person.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        setIsEditing(false);
+        onRefresh();
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to save changes');
+      }
+    } catch (error) {
+      console.error('Failed to save person:', error);
+      alert('Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const handlePrivacyChange = async (newPrivacy: 'PUBLIC' | 'FAMILY_ONLY' | 'PRIVATE') => {
@@ -1043,56 +1112,92 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Person Details</h2>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {isEditing ? 'Edit Person' : 'Person Details'}
+            </h2>
             <div className="flex items-center gap-2">
-              {canAddAncestors && !hasParents && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onAddRelationship}
-                  title="Add a parent to this person (Admin only)"
-                >
-                  <User className="w-3 h-3 mr-1" />
-                  Add Parent
-                </Button>
-              )}
-              {!canAddAncestors && !hasParents && (
-                <div className="text-xs text-gray-500 italic" title="Only administrators can add parent relationships">
-                  Contact admin to add parents
-                </div>
-              )}
-              {canAddDescendants && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onAddChild}
-                  title="Add a child to this person"
-                >
-                  <Baby className="w-3 h-3 mr-1" />
-                  Add Child
-                </Button>
-              )}
-              {canAddRelationships && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onAddSpouse}
-                  title="Add a spouse/partner to this person"
-                >
-                  <Heart className="w-3 h-3 mr-1" />
-                  Add Spouse
-                </Button>
-              )}
-              {canAddRelationships && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onAddSibling}
-                  title="Add a sibling to this person"
-                >
-                  <Users className="w-3 h-3 mr-1" />
-                  Add Sibling
-                </Button>
+              {isEditing ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditing(false)}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveEdit}
+                    disabled={saving}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {canEditPeople && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditing(true)}
+                      title="Edit this person's details"
+                    >
+                      <Edit2 className="w-3 h-3 mr-1" />
+                      Edit
+                    </Button>
+                  )}
+                  {canAddAncestors && !hasParents && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onAddRelationship}
+                      title="Add a parent to this person (Admin only)"
+                    >
+                      <User className="w-3 h-3 mr-1" />
+                      Add Parent
+                    </Button>
+                  )}
+                  {!canAddAncestors && !hasParents && (
+                    <div className="text-xs text-gray-500 italic" title="Only administrators can add parent relationships">
+                      Contact admin to add parents
+                    </div>
+                  )}
+                  {canAddDescendants && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onAddChild}
+                      title="Add a child to this person"
+                    >
+                      <Baby className="w-3 h-3 mr-1" />
+                      Add Child
+                    </Button>
+                  )}
+                  {canAddRelationships && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onAddSpouse}
+                      title="Add a spouse/partner to this person"
+                    >
+                      <Heart className="w-3 h-3 mr-1" />
+                      Add Spouse
+                    </Button>
+                  )}
+                  {canAddRelationships && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onAddSibling}
+                      title="Add a sibling to this person"
+                    >
+                      <Users className="w-3 h-3 mr-1" />
+                      Add Sibling
+                    </Button>
+                  )}
+                </>
               )}
               <Button variant="ghost" size="sm" onClick={onClose}>
                 <X className="w-4 h-4" />
@@ -1101,14 +1206,211 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Basic Info */}
-          <div>
-            <div className="flex items-start gap-4">
-              <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-2xl font-semibold text-gray-700">
-                {person.firstName.charAt(0)}{person.lastName.charAt(0)}
+        {isEditing ? (
+          /* Edit Form */
+          <div className="p-6 space-y-6">
+            {/* Basic Information */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Basic Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                  <input
+                    type="text"
+                    value={editFormData.firstName}
+                    onChange={(e) => setEditFormData({ ...editFormData, firstName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+                  <input
+                    type="text"
+                    value={editFormData.middleName}
+                    onChange={(e) => setEditFormData({ ...editFormData, middleName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                  <input
+                    type="text"
+                    value={editFormData.lastName}
+                    onChange={(e) => setEditFormData({ ...editFormData, lastName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Maiden Name</label>
+                  <input
+                    type="text"
+                    value={editFormData.maidenName}
+                    onChange={(e) => setEditFormData({ ...editFormData, maidenName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Suffix</label>
+                  <input
+                    type="text"
+                    value={editFormData.suffix}
+                    onChange={(e) => setEditFormData({ ...editFormData, suffix: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Jr., Sr., III"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nickname</label>
+                  <input
+                    type="text"
+                    value={editFormData.nickname}
+                    onChange={(e) => setEditFormData({ ...editFormData, nickname: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                  <select
+                    value={editFormData.gender}
+                    onChange={(e) => setEditFormData({ ...editFormData, gender: e.target.value as 'MALE' | 'FEMALE' | 'OTHER' | 'UNKNOWN' })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="UNKNOWN">Unknown</option>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Generation</label>
+                  <input
+                    type="number"
+                    value={editFormData.generation}
+                    onChange={(e) => setEditFormData({ ...editFormData, generation: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
-              <div className="flex-1">
+            </div>
+
+            {/* Life Events */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Life Events</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Birth Date</label>
+                  <input
+                    type="date"
+                    value={editFormData.birthDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, birthDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Birth Place</label>
+                  <input
+                    type="text"
+                    value={editFormData.birthPlace}
+                    onChange={(e) => setEditFormData({ ...editFormData, birthPlace: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isLiving"
+                    checked={editFormData.isLiving}
+                    onChange={(e) => setEditFormData({ ...editFormData, isLiving: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="isLiving" className="text-sm font-medium text-gray-700">Currently Living</label>
+                </div>
+                {!editFormData.isLiving && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Death Date</label>
+                      <input
+                        type="date"
+                        value={editFormData.deathDate}
+                        onChange={(e) => setEditFormData({ ...editFormData, deathDate: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Death Place</label>
+                      <input
+                        type="text"
+                        value={editFormData.deathPlace}
+                        onChange={(e) => setEditFormData({ ...editFormData, deathPlace: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Additional Information */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Additional Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Occupation</label>
+                  <input
+                    type="text"
+                    value={editFormData.occupation}
+                    onChange={(e) => setEditFormData({ ...editFormData, occupation: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Education</label>
+                  <input
+                    type="text"
+                    value={editFormData.education}
+                    onChange={(e) => setEditFormData({ ...editFormData, education: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Biography</label>
+                  <textarea
+                    value={editFormData.biography}
+                    onChange={(e) => setEditFormData({ ...editFormData, biography: e.target.value })}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Write a brief biography..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Privacy */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Privacy Settings</h3>
+              <select
+                value={editFormData.privacy}
+                onChange={(e) => setEditFormData({ ...editFormData, privacy: e.target.value as 'PUBLIC' | 'FAMILY_ONLY' | 'PRIVATE' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="PUBLIC">Public - Visible to everyone</option>
+                <option value="FAMILY_ONLY">Family Only - Visible to tree members</option>
+                <option value="PRIVATE">Private - Visible only to admins</option>
+              </select>
+            </div>
+          </div>
+        ) : (
+          /* View Mode */
+          <div className="p-6 space-y-6">
+            {/* Basic Info */}
+            <div>
+              <div className="flex items-start gap-4">
+                <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-2xl font-semibold text-gray-700">
+                  {person.firstName.charAt(0)}{person.lastName.charAt(0)}
+                </div>
+                <div className="flex-1">
                 <h3 className="text-2xl font-bold text-gray-900">
                   {person.firstName} {person.middleName ? `${person.middleName} ` : ''}{person.lastName}
                   {person.suffix ? ` ${person.suffix}` : ''}
@@ -1150,422 +1452,423 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                      'Private'}
                   </span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Life Events */}
-          {(person.birthDate || person.deathDate) && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Life Events</h4>
-              <div className="space-y-2">
-                {person.birthDate && (
-                  <div className="text-sm">
-                    <span className="font-medium text-gray-700">Born:</span>{' '}
-                    <span className="text-gray-600">
-                      {new Date(person.birthDate).toLocaleDateString()}
-                      {person.birthPlace && ` in ${person.birthPlace}`}
-                    </span>
-                  </div>
-                )}
-                {!person.isLiving && person.deathDate && (
-                  <div className="text-sm">
-                    <span className="font-medium text-gray-700">Died:</span>{' '}
-                    <span className="text-gray-600">
-                      {new Date(person.deathDate).toLocaleDateString()}
-                      {person.deathPlace && ` in ${person.deathPlace}`}
-                    </span>
-                  </div>
-                )}
-                {person.birthDate && (
-                  <div className="text-sm">
-                    <span className="font-medium text-gray-700">Age:</span>{' '}
-                    <span className="text-gray-600">
-                      {calculateAge(person.birthDate, person.isLiving ? null : person.deathDate)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Professional Info */}
-          {(person.occupation || person.education) && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Professional</h4>
-              <div className="space-y-2">
-                {person.occupation && (
-                  <div className="text-sm">
-                    <span className="font-medium text-gray-700">Occupation:</span>{' '}
-                    <span className="text-gray-600">{person.occupation}</span>
-                  </div>
-                )}
-                {person.education && (
-                  <div className="text-sm">
-                    <span className="font-medium text-gray-700">Education:</span>{' '}
-                    <span className="text-gray-600">{person.education}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Biography */}
-          {person.biography && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Biography</h4>
-              <p className="text-sm text-gray-600 whitespace-pre-wrap">{person.biography}</p>
-            </div>
-          )}
-
-          {/* Photos */}
-          <div className="border-t border-gray-200 pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-gray-700">Photos</h4>
-              <div>
-                <input
-                  id="photo-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                  disabled={uploadingPhoto}
-                />
-                <label htmlFor="photo-upload">
-                  <span className="inline-block">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={uploadingPhoto}
-                      type="button"
-                    >
-                      <Upload className="w-3 h-3 mr-1" />
-                      {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
-                    </Button>
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            {photos.length === 0 ? (
-              <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                <Image className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No photos yet</p>
-                <p className="text-xs text-gray-400 mt-1">Upload photos to create memories</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  {photos.map((photo) => (
-                    <div
-                      key={photo.id}
-                      className="relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-400 transition-colors"
-                      onClick={() => setSelectedPhoto(photo)}
-                    >
-                      <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                        <img
-                          src={photo.url}
-                          alt={photo.caption || 'Family photo'}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      {photo.caption && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 truncate">
-                          {photo.caption}
-                        </div>
-                      )}
-                    </div>
-                  ))}
                 </div>
+              </div>
+            </div>
 
-                {/* Photo Privacy Settings Modal */}
-                {selectedPhoto && (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                      <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-semibold text-gray-900">Photo Details</h3>
-                          <button
-                            onClick={() => setSelectedPhoto(null)}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Photo Preview */}
-                          <div>
-                            <img
-                              src={selectedPhoto.url}
-                              alt={selectedPhoto.caption || 'Family photo'}
-                              className="w-full rounded-lg border border-gray-200"
-                            />
-                            {selectedPhoto.caption && (
-                              <p className="text-sm text-gray-700 mt-2">{selectedPhoto.caption}</p>
-                            )}
-                            {selectedPhoto.dateTaken && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Taken: {new Date(selectedPhoto.dateTaken).toLocaleDateString()}
-                              </p>
-                            )}
-                            {selectedPhoto.location && (
-                              <p className="text-xs text-gray-500">Location: {selectedPhoto.location}</p>
-                            )}
-                          </div>
-
-                          {/* Privacy Settings */}
-                          <div>
-                            <PhotoPrivacySettings
-                              photo={selectedPhoto!}
-                              treeId={tree.id}
-                              isMinor={(() => {
-                                if (!person.isLiving || !person.birthDate) return false;
-                                const ageStr = calculateAge(person.birthDate, null);
-                                if (!ageStr || !ageStr.includes('years')) return false;
-                                const age = parseInt(ageStr);
-                                return !isNaN(age) && age < 18;
-                              })()}
-                              onUpdate={() => {
-                                fetchPhotos();
-                                setSelectedPhoto(null);
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
+            {/* Life Events */}
+            {(person.birthDate || person.deathDate) && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Life Events</h4>
+                <div className="space-y-2">
+                  {person.birthDate && (
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Born:</span>{' '}
+                      <span className="text-gray-600">
+                        {new Date(person.birthDate).toLocaleDateString()}
+                        {person.birthPlace && ` in ${person.birthPlace}`}
+                      </span>
                     </div>
-                  </div>
-                )}
+                  )}
+                  {!person.isLiving && person.deathDate && (
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Died:</span>{' '}
+                      <span className="text-gray-600">
+                        {new Date(person.deathDate).toLocaleDateString()}
+                        {person.deathPlace && ` in ${person.deathPlace}`}
+                      </span>
+                    </div>
+                  )}
+                  {person.birthDate && (
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Age:</span>{' '}
+                      <span className="text-gray-600">
+                        {calculateAge(person.birthDate, person.isLiving ? null : person.deathDate)}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </div>
 
-          {/* Privacy Settings */}
-          <div className="border-t border-gray-200 pt-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Privacy Settings</h4>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <input
-                  type="radio"
-                  id="privacy-public"
-                  name="privacy"
-                  value="PUBLIC"
-                  checked={person.privacy === 'PUBLIC'}
-                  onChange={() => handlePrivacyChange('PUBLIC')}
-                  disabled={updatingPrivacy}
-                  className="mt-1"
-                />
-                <label htmlFor="privacy-public" className="flex-1 cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-emerald-600" />
-                    <span className="font-medium text-sm text-gray-900">Public</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    All information visible to everyone
-                  </p>
-                </label>
+            {/* Professional Info */}
+            {(person.occupation || person.education) && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Professional</h4>
+                <div className="space-y-2">
+                  {person.occupation && (
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Occupation:</span>{' '}
+                      <span className="text-gray-600">{person.occupation}</span>
+                    </div>
+                  )}
+                  {person.education && (
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">Education:</span>{' '}
+                      <span className="text-gray-600">{person.education}</span>
+                    </div>
+                  )}
+                </div>
               </div>
+            )}
 
-              <div className="flex items-start gap-3">
-                <input
-                  type="radio"
-                  id="privacy-family"
-                  name="privacy"
-                  value="FAMILY_ONLY"
-                  checked={person.privacy === 'FAMILY_ONLY'}
-                  onChange={() => handlePrivacyChange('FAMILY_ONLY')}
-                  disabled={updatingPrivacy}
-                  className="mt-1"
-                />
-                <label htmlFor="privacy-family" className="flex-1 cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-amber-600" />
-                    <span className="font-medium text-sm text-gray-900">Family Only</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Name, photo, and relationships visible to family members only
-                  </p>
-                </label>
+            {/* Biography */}
+            {person.biography && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Biography</h4>
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">{person.biography}</p>
               </div>
+            )}
 
-              <div className="flex items-start gap-3">
-                <input
-                  type="radio"
-                  id="privacy-private"
-                  name="privacy"
-                  value="PRIVATE"
-                  checked={person.privacy === 'PRIVATE'}
-                  onChange={() => handlePrivacyChange('PRIVATE')}
-                  disabled={updatingPrivacy}
-                  className="mt-1"
-                />
-                <label htmlFor="privacy-private" className="flex-1 cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-red-600" />
-                    <span className="font-medium text-sm text-gray-900">Private</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Only name and relationships visible to admins
-                  </p>
-                </label>
-              </div>
-
-              {person.isLiving && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
-                  <p className="text-xs text-blue-800 flex items-start gap-2">
-                    <Shield className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>Living Person Protection:</strong> For living individuals, we recommend using "Family Only" or "Private" settings to protect personal information.
+            {/* Photos */}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-gray-700">Photos</h4>
+                <div>
+                  <input
+                    id="photo-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                    disabled={uploadingPhoto}
+                  />
+                  <label htmlFor="photo-upload">
+                    <span className="inline-block">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingPhoto}
+                        type="button"
+                      >
+                        <Upload className="w-3 h-3 mr-1" />
+                        {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                      </Button>
                     </span>
-                  </p>
+                  </label>
+                </div>
+              </div>
+
+              {photos.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                  <Image className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">No photos yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Upload photos to create memories</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    {photos.map((photo) => (
+                      <div
+                        key={photo.id}
+                        className="relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-400 transition-colors"
+                        onClick={() => setSelectedPhoto(photo)}
+                      >
+                        <div className="aspect-square bg-gray-100 flex items-center justify-center">
+                          <img
+                            src={photo.url}
+                            alt={photo.caption || 'Family photo'}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        {photo.caption && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 truncate">
+                            {photo.caption}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Photo Privacy Settings Modal */}
+                  {selectedPhoto && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                        <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-gray-900">Photo Details</h3>
+                            <button
+                              onClick={() => setSelectedPhoto(null)}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="p-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Photo Preview */}
+                            <div>
+                              <img
+                                src={selectedPhoto.url}
+                                alt={selectedPhoto.caption || 'Family photo'}
+                                className="w-full rounded-lg border border-gray-200"
+                              />
+                              {selectedPhoto.caption && (
+                                <p className="text-sm text-gray-700 mt-2">{selectedPhoto.caption}</p>
+                              )}
+                              {selectedPhoto.dateTaken && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Taken: {new Date(selectedPhoto.dateTaken).toLocaleDateString()}
+                                </p>
+                              )}
+                              {selectedPhoto.location && (
+                                <p className="text-xs text-gray-500">Location: {selectedPhoto.location}</p>
+                              )}
+                            </div>
+
+                            {/* Privacy Settings */}
+                            <div>
+                              <PhotoPrivacySettings
+                                photo={selectedPhoto!}
+                                treeId={tree.id}
+                                isMinor={(() => {
+                                  if (!person.isLiving || !person.birthDate) return false;
+                                  const ageStr = calculateAge(person.birthDate, null);
+                                  if (!ageStr || !ageStr.includes('years')) return false;
+                                  const age = parseInt(ageStr);
+                                  return !isNaN(age) && age < 18;
+                                })()}
+                                onUpdate={() => {
+                                  fetchPhotos();
+                                  setSelectedPhoto(null);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Data & Privacy Actions */}
-          <div className="border-t border-gray-200 pt-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Data & Privacy Actions</h4>
-            <div className="space-y-3">
-              {/* Export Data */}
-              <div className="flex items-start gap-3">
-                <Button
-                  onClick={handleExportData}
-                  disabled={exporting}
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  {exporting ? 'Exporting...' : 'Export My Data'}
-                </Button>
-              </div>
-              <p className="text-xs text-gray-500 -mt-2">
-                Download all personal information and relationships for this person in JSON format
-              </p>
+            {/* Privacy Settings */}
+            <div className="border-t border-gray-200 pt-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Privacy Settings</h4>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    id="privacy-public"
+                    name="privacy"
+                    value="PUBLIC"
+                    checked={person.privacy === 'PUBLIC'}
+                    onChange={() => handlePrivacyChange('PUBLIC')}
+                    disabled={updatingPrivacy}
+                    className="mt-1"
+                  />
+                  <label htmlFor="privacy-public" className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Eye className="w-4 h-4 text-emerald-600" />
+                      <span className="font-medium text-sm text-gray-900">Public</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      All information visible to everyone
+                    </p>
+                  </label>
+                </div>
 
-              {/* GDPR Delete */}
-              <div className="flex items-start gap-3">
-                <Button
-                  onClick={handleGDPRDelete}
-                  disabled={deleting}
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start text-red-600 border-red-300 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {deleting ? 'Deleting...' : 'Delete Personal Data (GDPR)'}
-                </Button>
+                <div className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    id="privacy-family"
+                    name="privacy"
+                    value="FAMILY_ONLY"
+                    checked={person.privacy === 'FAMILY_ONLY'}
+                    onChange={() => handlePrivacyChange('FAMILY_ONLY')}
+                    disabled={updatingPrivacy}
+                    className="mt-1"
+                  />
+                  <label htmlFor="privacy-family" className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-amber-600" />
+                      <span className="font-medium text-sm text-gray-900">Family Only</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Name, photo, and relationships visible to family members only
+                    </p>
+                  </label>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    id="privacy-private"
+                    name="privacy"
+                    value="PRIVATE"
+                    checked={person.privacy === 'PRIVATE'}
+                    onChange={() => handlePrivacyChange('PRIVATE')}
+                    disabled={updatingPrivacy}
+                    className="mt-1"
+                  />
+                  <label htmlFor="privacy-private" className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-red-600" />
+                      <span className="font-medium text-sm text-gray-900">Private</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Only name and relationships visible to admins
+                    </p>
+                  </label>
+                </div>
+
+                {person.isLiving && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+                    <p className="text-xs text-blue-800 flex items-start gap-2">
+                      <Shield className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>
+                        <strong>Living Person Protection:</strong> For living individuals, we recommend using "Family Only" or "Private" settings to protect personal information.
+                      </span>
+                    </p>
+                  </div>
+                )}
               </div>
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 -mt-2">
-                <p className="text-xs text-amber-800">
-                  <strong>Permanent Action:</strong> This will permanently delete all personal information for this person.
-                  The person will be converted to a "Removed Member" placeholder to preserve family tree structure.
-                  Relationships will be maintained but all personal details will be anonymized.
+            </div>
+
+            {/* Data & Privacy Actions */}
+            <div className="border-t border-gray-200 pt-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Data & Privacy Actions</h4>
+              <div className="space-y-3">
+                {/* Export Data */}
+                <div className="flex items-start gap-3">
+                  <Button
+                    onClick={handleExportData}
+                    disabled={exporting}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    {exporting ? 'Exporting...' : 'Export My Data'}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 -mt-2">
+                  Download all personal information and relationships for this person in JSON format
                 </p>
+
+                {/* GDPR Delete */}
+                <div className="flex items-start gap-3">
+                  <Button
+                    onClick={handleGDPRDelete}
+                    disabled={deleting}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {deleting ? 'Deleting...' : 'Delete Personal Data (GDPR)'}
+                  </Button>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 -mt-2">
+                  <p className="text-xs text-amber-800">
+                    <strong>Permanent Action:</strong> This will permanently delete all personal information for this person.
+                    The person will be converted to a "Removed Member" placeholder to preserve family tree structure.
+                    Relationships will be maintained but all personal details will be anonymized.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Relationships */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-gray-700">Relationships</h4>
-              {canAddRelationships && (
-                <Button
-                  onClick={onAddRelationship}
-                  size="sm"
-                  variant="outline"
-                >
-                  <LinkIcon className="w-3 h-3 mr-1" />
-                  Add Relationship
-                </Button>
-              )}
-            </div>
+            {/* Relationships */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-gray-700">Relationships</h4>
+                {canAddRelationships && (
+                  <Button
+                    onClick={onAddRelationship}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <LinkIcon className="w-3 h-3 mr-1" />
+                    Add Relationship
+                  </Button>
+                )}
+              </div>
 
-            {relationships.length === 0 ? (
-              <p className="text-sm text-gray-500 italic">No relationships defined yet</p>
-            ) : (
-              <div className="space-y-4">
-                {/* Group relationships by type */}
-                {(() => {
-                  const grouped = relationships.reduce((acc, rel) => {
-                    const relatedPerson = getRelatedPerson(rel);
-                    if (!relatedPerson) return acc;
-                    const label = getRelationshipLabel(rel);
-                    const category = label.toLowerCase().includes('parent') ? 'Parents' :
-                                    label.toLowerCase().includes('child') ? 'Children' :
-                                    label.toLowerCase().includes('spouse') ? 'Spouses' :
-                                    label.toLowerCase().includes('sibling') ? 'Siblings' :
-                                    'Other';
-                    if (!acc[category]) acc[category] = [];
-                    acc[category].push({ rel, relatedPerson, label });
-                    return acc;
-                  }, {} as Record<string, Array<{rel: Relationship, relatedPerson: Person, label: string}>>);
+              {relationships.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">No relationships defined yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {/* Group relationships by type */}
+                  {(() => {
+                    const grouped = relationships.reduce((acc, rel) => {
+                      const relatedPerson = getRelatedPerson(rel);
+                      if (!relatedPerson) return acc;
+                      const label = getRelationshipLabel(rel);
+                      const category = label.toLowerCase().includes('parent') ? 'Parents' :
+                                      label.toLowerCase().includes('child') ? 'Children' :
+                                      label.toLowerCase().includes('spouse') ? 'Spouses' :
+                                      label.toLowerCase().includes('sibling') ? 'Siblings' :
+                                      'Other';
+                      if (!acc[category]) acc[category] = [];
+                      acc[category].push({ rel, relatedPerson, label });
+                      return acc;
+                    }, {} as Record<string, Array<{rel: Relationship, relatedPerson: Person, label: string}>>);
 
-                  // Sort siblings by birth order if available
-                  if (grouped['Siblings']) {
-                    grouped['Siblings'].sort((a, b) => {
-                      const orderA = (a.rel as any).birthOrder || 999;
-                      const orderB = (b.rel as any).birthOrder || 999;
-                      return orderA - orderB;
-                    });
-                  }
+                    // Sort siblings by birth order if available
+                    if (grouped['Siblings']) {
+                      grouped['Siblings'].sort((a, b) => {
+                        const orderA = (a.rel as any).birthOrder || 999;
+                        const orderB = (b.rel as any).birthOrder || 999;
+                        return orderA - orderB;
+                      });
+                    }
 
-                  // Sort children by birth order if available
-                  if (grouped['Children']) {
-                    grouped['Children'].sort((a, b) => {
-                      const orderA = (a.rel as any).birthOrder || 999;
-                      const orderB = (b.rel as any).birthOrder || 999;
-                      return orderA - orderB;
-                    });
-                  }
+                    // Sort children by birth order if available
+                    if (grouped['Children']) {
+                      grouped['Children'].sort((a, b) => {
+                        const orderA = (a.rel as any).birthOrder || 999;
+                        const orderB = (b.rel as any).birthOrder || 999;
+                        return orderA - orderB;
+                      });
+                    }
 
-                  const categoryOrder = ['Parents', 'Spouses', 'Siblings', 'Children', 'Other'];
-                  return categoryOrder.map(category => {
-                    if (!grouped[category] || grouped[category].length === 0) return null;
-                    return (
-                      <div key={category}>
-                        <h5 className="text-xs font-semibold text-gray-600 uppercase mb-2">{category}</h5>
-                        <div className="space-y-2">
-                          {grouped[category].map(({ rel, relatedPerson, label }) => (
-                            <div
-                              key={rel.id}
-                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
-                            >
-                              <div className="flex items-center gap-3 flex-1">
-                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
-                                  {relatedPerson.firstName.charAt(0)}{relatedPerson.lastName.charAt(0)}
-                                </div>
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium text-gray-900">
-                                    {relatedPerson.firstName} {relatedPerson.lastName}
-                                    {(rel as any).birthOrder && (
-                                      <span className="ml-2 text-xs text-gray-500">
-                                        #{(rel as any).birthOrder}
-                                      </span>
-                                    )}
-                                  </p>
-                                  <div className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full border text-xs font-medium ${getRelationshipBadgeColor(label)}`}>
-                                    {getRelationshipIcon(label)}
-                                    <span>{label}</span>
+                    const categoryOrder = ['Parents', 'Spouses', 'Siblings', 'Children', 'Other'];
+                    return categoryOrder.map(category => {
+                      if (!grouped[category] || grouped[category].length === 0) return null;
+                      return (
+                        <div key={category}>
+                          <h5 className="text-xs font-semibold text-gray-600 uppercase mb-2">{category}</h5>
+                          <div className="space-y-2">
+                            {grouped[category].map(({ rel, relatedPerson, label }) => (
+                              <div
+                                key={rel.id}
+                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
+                                    {relatedPerson.firstName.charAt(0)}{relatedPerson.lastName.charAt(0)}
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {relatedPerson.firstName} {relatedPerson.lastName}
+                                      {(rel as any).birthOrder && (
+                                        <span className="ml-2 text-xs text-gray-500">
+                                          #{(rel as any).birthOrder}
+                                        </span>
+                                      )}
+                                    </p>
+                                    <div className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full border text-xs font-medium ${getRelationshipBadgeColor(label)}`}>
+                                      {getRelationshipIcon(label)}
+                                      <span>{label}</span>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            )}
+                      );
+                    });
+                  })()}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
