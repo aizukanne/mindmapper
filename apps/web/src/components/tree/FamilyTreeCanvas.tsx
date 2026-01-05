@@ -253,13 +253,22 @@ export function FamilyTreeCanvas({
     }
   }
 
-  if (!layout || people.length === 0) {
+  // Check if layout is valid and has nodes
+  const hasValidNodes = layout && layout.nodes.size > 0 &&
+    Array.from(layout.nodes.values()).some(n => Number.isFinite(n.x) && Number.isFinite(n.y));
+
+  if (!layout || people.length === 0 || !hasValidNodes) {
     return (
       <div className={`flex items-center justify-center h-full bg-gray-50 ${className}`}>
         {people.length === 0 ? (
           <div className="text-center text-gray-500">
             <p className="text-lg font-medium">No family members yet</p>
             <p className="text-sm">Add people to start building your family tree</p>
+          </div>
+        ) : layout && layout.nodes.size === 0 ? (
+          <div className="text-center text-gray-500">
+            <p className="text-lg font-medium">Unable to layout tree</p>
+            <p className="text-sm">Try switching to Grid view</p>
           </div>
         ) : (
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -393,6 +402,10 @@ export function FamilyTreeCanvas({
           style={{
             transform: `translate(${viewState.offsetX}px, ${viewState.offsetY}px) scale(${viewState.scale})`,
             transformOrigin: '0 0',
+            width: layout.bounds.width + 200,
+            height: layout.bounds.height + 200,
+            minWidth: '100%',
+            minHeight: '100%',
           }}
         >
           {/* Edges (SVG) */}

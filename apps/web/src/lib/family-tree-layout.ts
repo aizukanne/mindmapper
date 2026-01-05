@@ -139,10 +139,11 @@ function buildRelationshipMaps(relationships: Relationship[]): {
       case 'STEP_CHILD':
       case 'FOSTER_CHILD':
       case 'WARD':
-        if (!parentMap.has(fromId)) parentMap.set(fromId, []);
-        parentMap.get(fromId)!.push(toId);
-        if (!childMap.has(toId)) childMap.set(toId, []);
-        childMap.get(toId)!.push(fromId);
+        // fromId is the parent, toId is the child
+        if (!childMap.has(fromId)) childMap.set(fromId, []);
+        childMap.get(fromId)!.push(toId);
+        if (!parentMap.has(toId)) parentMap.set(toId, []);
+        parentMap.get(toId)!.push(fromId);
         break;
     }
   }
