@@ -379,6 +379,10 @@ function centerChildrenUnderParents(
 
       // Calculate parent unit center
       const parentUnitNodes = parentUnit.map(id => nodes.get(id)).filter(Boolean) as LayoutNode[];
+
+      // Skip if no parent nodes found (filtered out)
+      if (parentUnitNodes.length === 0) continue;
+
       const parentCenterX = parentUnitNodes.reduce((sum, n) => sum + n.x + n.width / 2, 0) / parentUnitNodes.length;
 
       // Calculate children center
@@ -534,10 +538,18 @@ function calculateBounds(nodes: Map<string, LayoutNode>): TreeLayout['bounds'] {
   let maxY = -Infinity;
 
   for (const node of nodes.values()) {
+    // Skip nodes with invalid positions
+    if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) continue;
+
     minX = Math.min(minX, node.x);
     maxX = Math.max(maxX, node.x + node.width);
     minY = Math.min(minY, node.y);
     maxY = Math.max(maxY, node.y + node.height);
+  }
+
+  // Fallback to zero bounds if no valid nodes
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+    return { minX: 0, maxX: 0, minY: 0, maxY: 0, width: 0, height: 0 };
   }
 
   return {

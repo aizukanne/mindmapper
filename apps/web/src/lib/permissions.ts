@@ -52,11 +52,12 @@ export function canViewTree(tree: TreeContext, member: MemberContext | null, _is
 export function canEditPerson(member: MemberContext | null): boolean {
   if (!member || !member.role) return false;
 
-  const roleLevel = {
+  const roleHierarchy: Record<string, number> = {
     ADMIN: 3,
     MEMBER: 2,
     VIEWER: 1,
-  }[member.role] || 0;
+  };
+  const roleLevel = roleHierarchy[member.role] || 0;
 
   return roleLevel >= 2; // MEMBER and above
 }
@@ -75,11 +76,12 @@ export function canDeletePerson(member: MemberContext | null): boolean {
 export function canAddRelationship(member: MemberContext | null): boolean {
   if (!member || !member.role) return false;
 
-  const roleLevel = {
+  const roleHierarchy: Record<string, number> = {
     ADMIN: 3,
     MEMBER: 2,
     VIEWER: 1,
-  }[member.role] || 0;
+  };
+  const roleLevel = roleHierarchy[member.role] || 0;
 
   return roleLevel >= 2; // MEMBER and above
 }
@@ -108,11 +110,12 @@ export function canAddAncestor(member: MemberContext | null): boolean {
 export function canAddDescendants(member: MemberContext | null): boolean {
   if (!member || !member.role) return false;
 
-  const roleLevel = {
+  const roleHierarchy: Record<string, number> = {
     ADMIN: 3,
     MEMBER: 2,
     VIEWER: 1,
-  }[member.role] || 0;
+  };
+  const roleLevel = roleHierarchy[member.role] || 0;
 
   return roleLevel >= 2; // MEMBER and above
 }
@@ -177,22 +180,24 @@ export function canViewPersonDetails(person: PersonContext, member: MemberContex
  */
 export function getRoleName(role: TreeRole | null): string {
   if (!role) return 'No Access';
-  return {
+  const roleNames: Record<string, string> = {
     ADMIN: 'Administrator',
     MEMBER: 'Member',
     VIEWER: 'Viewer',
-  }[role];
+  };
+  return roleNames[role] || 'Unknown';
 }
 
 /**
  * Get role description
  */
 export function getRoleDescription(role: TreeRole): string {
-  return {
+  const roleDescriptions: Record<string, string> = {
     ADMIN: 'Full access to manage tree, members, and settings',
     MEMBER: 'Can add and edit people and relationships',
     VIEWER: 'Can only view the family tree',
-  }[role];
+  };
+  return roleDescriptions[role] || 'Unknown role';
 }
 
 /**

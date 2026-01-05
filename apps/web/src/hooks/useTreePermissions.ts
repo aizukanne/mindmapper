@@ -67,11 +67,12 @@ export function useTreePermissions(context: TreePermissionsContext): TreePermiss
     const isViewer = effectiveRole === 'VIEWER';
 
     // Role hierarchy levels
-    const roleLevel = {
+    const roleHierarchy: Record<string, number> = {
       ADMIN: 3,
       MEMBER: 2,
       VIEWER: 1,
-    }[effectiveRole || 'VIEWER'] || 0;
+    };
+    const roleLevel = roleHierarchy[effectiveRole || 'VIEWER'] || 0;
 
     return {
       // Basic permissions

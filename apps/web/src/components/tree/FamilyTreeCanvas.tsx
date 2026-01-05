@@ -424,7 +424,9 @@ export function FamilyTreeCanvas({
           </svg>
 
           {/* Person Cards */}
-          {Array.from(layout.nodes.values()).map(node => (
+          {Array.from(layout.nodes.values())
+            .filter(node => Number.isFinite(node.x) && Number.isFinite(node.y))
+            .map(node => (
             <div
               key={node.id}
               className="person-card"
@@ -464,11 +466,19 @@ function EdgePath({ edge, boundsMinX, boundsMinY }: EdgePathProps) {
   const { points, type } = edge;
   if (points.length < 2) return null;
 
+  // Skip if bounds are invalid
+  if (!Number.isFinite(boundsMinX) || !Number.isFinite(boundsMinY)) return null;
+
   // Adjust points relative to SVG origin
   const adjustedPoints = points.map(p => ({
     x: p.x - boundsMinX + 50,
     y: p.y - boundsMinY + 50,
   }));
+
+  // Skip if any point has invalid coordinates
+  if (adjustedPoints.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
+    return null;
+  }
 
   // Build path
   let pathD = `M ${adjustedPoints[0].x} ${adjustedPoints[0].y}`;

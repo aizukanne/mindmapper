@@ -2024,6 +2024,22 @@ familyTreesRouter.get('/:treeId/me', async (req, res, next) => {
     const { treeId } = req.params;
     const userId = getUserId(req);
 
+    // First check if user has access (either as creator or member)
+    const tree = await prisma.familyTree.findFirst({
+      where: {
+        id: treeId,
+        OR: [
+          { createdBy: userId },
+          { members: { some: { userId } } },
+        ],
+      },
+    });
+
+    if (!tree) {
+      throw new AppError(403, 'Not a member of this tree');
+    }
+
+    // Now get the member record (which might not exist for creators)
     const member = await prisma.treeMember.findUnique({
       where: { treeId_userId: { treeId, userId } },
       include: {
@@ -2041,14 +2057,11 @@ familyTreesRouter.get('/:treeId/me', async (req, res, next) => {
       },
     });
 
-    if (!member) {
-      throw new AppError(403, 'Not a member of this tree');
-    }
-
     res.json({
       success: true,
       data: {
-        linkedPerson: member.linkedPerson,
+        // If no member record, return null for linkedPerson
+        linkedPerson: member?.linkedPerson || null,
       },
     });
   } catch (error) {
@@ -2067,11 +2080,18 @@ familyTreesRouter.post('/:treeId/me/link', async (req, res, next) => {
       throw new AppError(400, 'personId is required');
     }
 
-    const member = await prisma.treeMember.findUnique({
-      where: { treeId_userId: { treeId, userId } },
+    // First check if user has access (either as creator or member)
+    const tree = await prisma.familyTree.findFirst({
+      where: {
+        id: treeId,
+        OR: [
+          { createdBy: userId },
+          { members: { some: { userId } } },
+        ],
+      },
     });
 
-    if (!member) {
+    if (!tree) {
       throw new AppError(403, 'Not a member of this tree');
     }
 
@@ -2096,10 +2116,32 @@ familyTreesRouter.post('/:treeId/me/link', async (req, res, next) => {
       throw new AppError(409, 'This person is already linked to another user');
     }
 
-    // Update the member's linked person
-    const updated = await prisma.treeMember.update({
+    // Get or create member record (for creators who might not have one)
+    let member = await prisma.treeMember.findUnique({
       where: { treeId_userId: { treeId, userId } },
-      data: { linkedPersonId: personId },
+    });
+
+    if (!member) {
+      // Create member record for creator
+      member = await prisma.treeMember.create({
+        data: {
+          treeId,
+          userId,
+          role: 'ADMIN', // Creators get admin role
+          linkedPersonId: personId,
+        },
+      });
+    } else {
+      // Update existing member's linked person
+      member = await prisma.treeMember.update({
+        where: { treeId_userId: { treeId, userId } },
+        data: { linkedPersonId: personId },
+      });
+    }
+
+    // Fetch the linked person details
+    const updated = await prisma.treeMember.findUnique({
+      where: { id: member.id },
       include: {
         linkedPerson: {
           select: {
@@ -2119,7 +2161,7 @@ familyTreesRouter.post('/:treeId/me/link', async (req, res, next) => {
       success: true,
       message: 'Successfully linked to person',
       data: {
-        linkedPerson: updated.linkedPerson,
+        linkedPerson: updated?.linkedPerson || null,
       },
     });
   } catch (error) {
@@ -2133,16 +2175,31 @@ familyTreesRouter.delete('/:treeId/me/link', async (req, res, next) => {
     const { treeId } = req.params;
     const userId = getUserId(req);
 
+    // First check if user has access (either as creator or member)
+    const tree = await prisma.familyTree.findFirst({
+      where: {
+        id: treeId,
+        OR: [
+          { createdBy: userId },
+          { members: { some: { userId } } },
+        ],
+      },
+    });
+
+    if (!tree) {
+      throw new AppError(403, 'Not a member of this tree');
+    }
+
     const member = await prisma.treeMember.findUnique({
       where: { treeId_userId: { treeId, userId } },
     });
 
-    if (!member) {
-      throw new AppError(403, 'Not a member of this tree');
-    }
-
-    if (!member.linkedPersonId) {
-      throw new AppError(400, 'No person linked to unlink');
+    if (!member || !member.linkedPersonId) {
+      // No member record or no linked person - just return success
+      return res.json({
+        success: true,
+        message: 'No person linked to unlink',
+      });
     }
 
     await prisma.treeMember.update({
