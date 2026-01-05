@@ -963,7 +963,8 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
 
       if (response.ok) {
         const data = await response.json();
-        setPhotos(data.data || []);
+        // API returns { data: { photos: [...], total, limit, offset } }
+        setPhotos(data.data?.photos || []);
       }
     } catch (error) {
       console.error('Failed to fetch photos:', error);
