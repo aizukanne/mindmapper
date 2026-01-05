@@ -48,6 +48,16 @@ const updateTreeSchema = z.object({
   privacy: z.enum(['PRIVATE', 'FAMILY_ONLY', 'PUBLIC']).optional(),
 });
 
+// Helper to accept both date-only (YYYY-MM-DD) and datetime strings
+const dateStringSchema = z.string().refine(
+  (val) => {
+    if (!val) return true;
+    // Accept YYYY-MM-DD or full ISO datetime
+    return /^\d{4}-\d{2}-\d{2}(T.*)?$/.test(val);
+  },
+  { message: 'Invalid date format. Use YYYY-MM-DD or ISO datetime.' }
+).optional();
+
 const createPersonSchema = z.object({
   firstName: z.string().min(1),
   middleName: z.string().optional(),
@@ -56,9 +66,9 @@ const createPersonSchema = z.object({
   suffix: z.string().optional(),
   nickname: z.string().optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'UNKNOWN']).default('UNKNOWN'),
-  birthDate: z.string().datetime().optional(),
+  birthDate: dateStringSchema,
   birthPlace: z.string().optional(),
-  deathDate: z.string().datetime().optional(),
+  deathDate: dateStringSchema,
   deathPlace: z.string().optional(),
   isLiving: z.boolean().default(true),
   biography: z.string().optional(),
