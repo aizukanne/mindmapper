@@ -8,6 +8,9 @@ interface UseKeyboardShortcutsOptions {
   canUndo?: boolean;
   canRedo?: boolean;
   onShowHelp?: () => void;
+  onToggleMinimap?: () => void;
+  onSetPanMode?: (isPanMode: boolean) => void;
+  onTogglePanMode?: () => void;
 }
 
 interface UseKeyboardShortcutsReturn {
@@ -15,7 +18,7 @@ interface UseKeyboardShortcutsReturn {
 }
 
 export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}): UseKeyboardShortcutsReturn {
-  const { undo, redo, canUndo, canRedo, onShowHelp } = options;
+  const { undo, redo, canUndo, canRedo, onShowHelp, onToggleMinimap, onSetPanMode, onTogglePanMode } = options;
   const { selectedNodeId, addNode, deleteNode, duplicateNode, nodes } = useMapStore();
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const [isPanMode, setIsPanMode] = useState(false);
@@ -146,13 +149,32 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}):
         case 'Escape':
           // Exit pan mode
           setIsPanMode(false);
+          if (onSetPanMode) onSetPanMode(false);
+          break;
+
+        case 'm':
+        case 'M':
+          // Toggle minimap (M key, not with modifier)
+          if (!modKey && onToggleMinimap) {
+            event.preventDefault();
+            onToggleMinimap();
+          }
+          break;
+
+        case 'p':
+        case 'P':
+          // Toggle pan mode (P key, not with modifier)
+          if (!modKey && onTogglePanMode) {
+            event.preventDefault();
+            onTogglePanMode();
+          }
           break;
 
         default:
           break;
       }
     },
-    [selectedNodeId, nodes, addNode, deleteNode, duplicateNode, fitView, zoomIn, zoomOut, undo, redo, canUndo, canRedo, onShowHelp]
+    [selectedNodeId, nodes, addNode, deleteNode, duplicateNode, fitView, zoomIn, zoomOut, undo, redo, canUndo, canRedo, onShowHelp, onToggleMinimap, onSetPanMode, onTogglePanMode]
   );
 
   const handleKeyUp = useCallback((event: KeyboardEvent) => {

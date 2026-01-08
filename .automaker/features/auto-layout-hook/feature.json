@@ -1,0 +1,16 @@
+{
+  "id": "auto-layout-hook",
+  "category": "Core",
+  "title": "useAutoLayout Hook",
+  "description": "Create React hook for triggering auto-layout on demand. Support different layout modes (tree, radial) and preserve manual positioning.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "dagre-layout"
+  ],
+  "createdAt": "2026-01-07T00:20:10.247Z",
+  "updatedAt": "2026-01-07T04:36:24.248Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T04:27:34.336Z"
+}

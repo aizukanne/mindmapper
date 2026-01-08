@@ -1,0 +1,22 @@
+{
+  "category": "Uncategorized",
+  "description": "There is no option to remove or delete a person and create them again. The delete option there is only for GDPR. That should be available",
+  "title": "Remove and recreate person profiles",
+  "images": [],
+  "imagePaths": [],
+  "textFilePaths": [],
+  "skipTests": true,
+  "model": "opus",
+  "thinkingLevel": "none",
+  "branchName": "feature/family-tree",
+  "priority": 2,
+  "planningMode": "skip",
+  "requirePlanApproval": false,
+  "dependencies": [],
+  "titleGenerating": false,
+  "status": "verified",
+  "id": "feature-1767794268773-m30vgkrav",
+  "startedAt": "2026-01-07T13:57:50.232Z",
+  "updatedAt": "2026-01-07T14:04:04.758Z",
+  "justFinishedAt": "2026-01-07T14:04:04.758Z"
+}

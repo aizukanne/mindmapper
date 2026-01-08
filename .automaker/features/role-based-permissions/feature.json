@@ -1,0 +1,16 @@
+{
+  "id": "role-based-permissions",
+  "category": "API",
+  "title": "Family Tree Role-Based Permissions",
+  "description": "Implement permission system for Admin/Member/Viewer roles. Admins edit anyone, Members edit self and descendants, Viewers read-only.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "complex",
+  "dependencies": [
+    "family-tree-api"
+  ],
+  "createdAt": "2026-01-07T00:20:10.263Z",
+  "updatedAt": "2026-01-07T01:51:49.546Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T01:40:38.879Z"
+}

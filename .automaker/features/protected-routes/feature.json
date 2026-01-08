@@ -1,0 +1,16 @@
+{
+  "id": "protected-routes",
+  "category": "Authentication",
+  "title": "Protected Route Component",
+  "description": "Create ProtectedRoute wrapper component that checks authentication status. Redirect unauthenticated users to sign-in page.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "clerk-frontend-provider"
+  ],
+  "createdAt": "2026-01-07T00:20:10.237Z",
+  "updatedAt": "2026-01-07T02:31:06.624Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T02:29:06.911Z"
+}

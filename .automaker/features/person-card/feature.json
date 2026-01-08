@@ -1,0 +1,17 @@
+{
+  "id": "person-card",
+  "category": "UI",
+  "title": "Person Card Component",
+  "description": "Create card displaying person info: name, photo, birth/death dates, lifespan. Show relationship lines and clickable for details.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "family-tree-canvas",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.263Z",
+  "updatedAt": "2026-01-07T03:28:51.101Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:23:01.352Z"
+}

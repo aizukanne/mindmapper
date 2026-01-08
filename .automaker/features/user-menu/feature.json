@@ -1,0 +1,17 @@
+{
+  "id": "user-menu",
+  "category": "UI",
+  "title": "User Menu Component",
+  "description": "Create header user menu with avatar, profile info, and sign-out button. Use Clerk's UserButton or custom implementation with shadcn Dropdown.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "clerk-frontend-provider",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.237Z",
+  "updatedAt": "2026-01-07T03:45:24.392Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:41:07.307Z"
+}

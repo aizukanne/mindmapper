@@ -1,0 +1,16 @@
+{
+  "id": "undo-redo-manager",
+  "category": "Core",
+  "title": "Yjs UndoManager Integration",
+  "description": "Set up Yjs UndoManager for undo/redo support. Integrate with keyboard shortcuts and toolbar buttons, track operation history.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "yjs-sync-hook"
+  ],
+  "createdAt": "2026-01-07T00:20:10.248Z",
+  "updatedAt": "2026-01-07T08:49:28.511Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:47:07.254Z"
+}

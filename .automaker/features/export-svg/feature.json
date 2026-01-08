@@ -1,0 +1,16 @@
+{
+  "id": "export-svg",
+  "category": "Core",
+  "title": "Export to SVG",
+  "description": "Generate SVG representation of canvas using React Flow export. Include all nodes, connections, and styling.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "react-flow-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.258Z",
+  "updatedAt": "2026-01-07T05:31:32.143Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:14:10.507Z"
+}

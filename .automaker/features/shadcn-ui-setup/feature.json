@@ -1,0 +1,16 @@
+{
+  "id": "shadcn-ui-setup",
+  "category": "UI",
+  "title": "shadcn/ui Component Library",
+  "description": "Initialize shadcn/ui with Radix UI primitives. Install essential components like Button, Dialog, Card, Input, and Dropdown.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "tailwind-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.233Z",
+  "updatedAt": "2026-01-07T02:50:25.371Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T02:47:53.698Z"
+}

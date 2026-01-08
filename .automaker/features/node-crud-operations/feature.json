@@ -1,0 +1,17 @@
+{
+  "id": "node-crud-operations",
+  "category": "Core",
+  "title": "Node CRUD Operations",
+  "description": "Implement frontend functions for creating, updating, and deleting nodes. Sync changes with backend API and update React Flow state.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "custom-node-component",
+    "api-client"
+  ],
+  "createdAt": "2026-01-07T00:20:10.241Z",
+  "updatedAt": "2026-01-07T03:23:00.930Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:13:04.439Z"
+}

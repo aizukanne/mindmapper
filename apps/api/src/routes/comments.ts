@@ -323,6 +323,193 @@ commentsRouter.get('/maps/:mapId/comments/nodes', async (req, res, next) => {
   }
 });
 
+// Get a single comment by ID
+commentsRouter.get('/comments/:commentId', async (req, res, next) => {
+  try {
+    const { commentId } = req.params;
+
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            email: true,
+          },
+        },
+        node: {
+          select: {
+            id: true,
+            text: true,
+          },
+        },
+        replies: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatarUrl: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        parent: {
+          select: {
+            id: true,
+            text: true,
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Check permission (VIEWER or higher)
+    const hasPermission = await checkMapPermission(req, comment.mindMapId, 'VIEWER');
+    if (!hasPermission) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.json({ data: comment });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Toggle resolution status on a comment
+commentsRouter.patch('/comments/:commentId/resolve', async (req, res, next) => {
+  try {
+    const { commentId } = req.params;
+    const userId = getUserId(req);
+    const { resolved } = req.body;
+
+    // Find the comment
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      include: { mindMap: { select: { userId: true } } },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Check if user is the comment author or map owner
+    const isAuthor = comment.userId === userId;
+    const isMapOwner = comment.mindMap.userId === userId;
+
+    if (!isAuthor && !isMapOwner) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // If resolved is provided explicitly, use it; otherwise toggle
+    const newResolvedStatus = resolved !== undefined ? Boolean(resolved) : !comment.resolved;
+
+    const updatedComment = await prisma.comment.update({
+      where: { id: commentId },
+      data: { resolved: newResolvedStatus },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            email: true,
+          },
+        },
+        node: {
+          select: {
+            id: true,
+            text: true,
+          },
+        },
+      },
+    });
+
+    res.json({ data: updatedComment });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get a full comment thread (comment with all nested replies recursively)
+commentsRouter.get('/maps/:mapId/comments/thread/:commentId', async (req, res, next) => {
+  try {
+    const { mapId, commentId } = req.params;
+
+    // Check permission (VIEWER or higher)
+    const hasPermission = await checkMapPermission(req, mapId, 'VIEWER');
+    if (!hasPermission) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Helper function to recursively fetch replies
+    const fetchReplies = async (parentId: string): Promise<unknown[]> => {
+      const replies = await prisma.comment.findMany({
+        where: { parentId, mindMapId: mapId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      // Recursively fetch replies for each reply
+      return Promise.all(
+        replies.map(async (reply) => ({
+          ...reply,
+          replies: await fetchReplies(reply.id),
+        }))
+      );
+    };
+
+    // Get the root comment
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId, mindMapId: mapId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            email: true,
+          },
+        },
+        node: {
+          select: {
+            id: true,
+            text: true,
+          },
+        },
+      },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Fetch all nested replies
+    const replies = await fetchReplies(commentId);
+
+    res.json({ data: { ...comment, replies } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get comments for a specific node
 commentsRouter.get('/maps/:mapId/nodes/:nodeId/comments', async (req, res, next) => {
   try {

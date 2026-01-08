@@ -1,0 +1,16 @@
+{
+  "id": "import-freemind-parser",
+  "category": "Core",
+  "title": "FreeMind XML Import Parser",
+  "description": "Create parser for FreeMind XML format. Extract nodes, relationships, and styling, convert to MindMapper format.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "map-editor-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.260Z",
+  "updatedAt": "2026-01-07T06:28:38.105Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:26:49.254Z"
+}

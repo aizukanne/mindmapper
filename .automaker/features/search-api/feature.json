@@ -1,0 +1,17 @@
+{
+  "id": "search-api",
+  "category": "API",
+  "title": "Global Search API",
+  "description": "Create search endpoint with full-text query support. Return ranked results across maps and nodes with context snippets.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "search-schema",
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.257Z",
+  "updatedAt": "2026-01-07T07:52:36.083Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:46:46.332Z"
+}

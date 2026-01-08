@@ -344,20 +344,21 @@ export function PhotoGallery({
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border ${className}`}>
+    <div className={`bg-white rounded-lg shadow-sm border ${className}`} data-testid="photo-gallery">
       {/* Header */}
       <div className="border-b p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Image className="w-5 h-5 text-gray-500" />
             <h2 className="text-lg font-semibold text-gray-900">Photo Gallery</h2>
-            <span className="text-sm text-gray-500">({total} photos)</span>
+            <span className="text-sm text-gray-500" data-testid="photo-count">({total} photos)</span>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant={showFilters ? 'default' : 'outline'}
               size="sm"
               onClick={() => setShowFilters(!showFilters)}
+              data-testid="filter-button"
             >
               <Filter className="w-4 h-4 mr-1" />
               Filters
@@ -365,7 +366,7 @@ export function PhotoGallery({
                 <span className="ml-1 bg-blue-500 text-white text-xs px-1.5 rounded-full">!</span>
               )}
             </Button>
-            <Button size="sm" onClick={() => setShowUpload(true)}>
+            <Button size="sm" onClick={() => setShowUpload(true)} data-testid="upload-button">
               <Upload className="w-4 h-4 mr-1" />
               Upload
             </Button>
@@ -421,19 +422,20 @@ export function PhotoGallery({
       {/* Gallery Grid */}
       <div className="p-4">
         {photos.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500" data-testid="empty-gallery">
             <Image className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p className="text-lg font-medium">No photos yet</p>
             <p className="text-sm mt-1">Upload photos to start building your family gallery</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" data-testid="photo-grid">
               {photos.map((photo, index) => (
                 <div
                   key={photo.id}
                   className="group relative aspect-square rounded-lg overflow-hidden bg-gray-100 cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
                   onClick={() => handlePhotoClick(photo, index)}
+                  data-testid={`photo-item-${index}`}
                 >
                   <img
                     src={photo.url}
@@ -444,13 +446,13 @@ export function PhotoGallery({
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors" />
                   {/* Tags indicator */}
                   {photo.taggedPeople.length > 0 && (
-                    <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/60 text-white text-xs px-2 py-1 rounded" data-testid="tag-indicator">
                       <Tag className="w-3 h-3" />
                       {photo.taggedPeople.length}
                     </div>
                   )}
                   {/* Privacy indicator */}
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity" data-testid="privacy-indicator">
                     {PRIVACY_OPTIONS.find(o => o.value === photo.privacy)?.icon}
                   </div>
                 </div>
@@ -660,12 +662,13 @@ export function PhotoGallery({
 
       {/* Photo Lightbox */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" data-testid="photo-lightbox">
           {/* Navigation buttons */}
           <button
             className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 disabled:opacity-50"
             onClick={handlePrevPhoto}
             disabled={photoIndex === 0}
+            data-testid="lightbox-prev"
           >
             <ChevronLeft className="w-10 h-10" />
           </button>
@@ -673,6 +676,7 @@ export function PhotoGallery({
             className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 disabled:opacity-50"
             onClick={handleNextPhoto}
             disabled={photoIndex === photos.length - 1}
+            data-testid="lightbox-next"
           >
             <ChevronRight className="w-10 h-10" />
           </button>
@@ -681,6 +685,7 @@ export function PhotoGallery({
           <button
             className="absolute top-4 right-4 text-white hover:text-gray-300"
             onClick={() => setSelectedPhoto(null)}
+            data-testid="lightbox-close"
           >
             <X className="w-8 h-8" />
           </button>
@@ -736,10 +741,10 @@ export function PhotoGallery({
               </div>
 
               {/* Tagged people */}
-              <div className="mt-4">
+              <div className="mt-4" data-testid="tagged-people-section">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-medium text-gray-700">Tagged People</h4>
-                  <Button variant="ghost" size="sm" onClick={handleOpenTagModal}>
+                  <Button variant="ghost" size="sm" onClick={handleOpenTagModal} data-testid="tag-people-button">
                     <Tag className="w-4 h-4 mr-1" />
                     Tag
                   </Button>
@@ -783,12 +788,13 @@ export function PhotoGallery({
               </div>
 
               {/* Privacy */}
-              <div className="mt-4">
+              <div className="mt-4" data-testid="privacy-section">
                 <h4 className="text-sm font-medium text-gray-700 mb-2">Privacy</h4>
                 <select
                   value={selectedPhoto.privacy}
                   onChange={e => handlePrivacyChange(e.target.value as PhotoPrivacy)}
                   className="w-full px-3 py-2 border rounded-lg text-sm"
+                  data-testid="privacy-select"
                 >
                   {PRIVACY_OPTIONS.map(option => (
                     <option key={option.value} value={option.value}>

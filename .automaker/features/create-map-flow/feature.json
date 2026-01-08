@@ -1,0 +1,17 @@
+{
+  "id": "create-map-flow",
+  "category": "Core",
+  "title": "Create New Mind Map Flow",
+  "description": "Implement create new map dialog with title and description input. Navigate to editor after creation and initialize empty canvas.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "mind-map-crud-api",
+    "dashboard-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.246Z",
+  "updatedAt": "2026-01-07T03:06:52.346Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:05:29.698Z"
+}

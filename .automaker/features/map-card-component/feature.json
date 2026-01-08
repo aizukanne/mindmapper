@@ -1,0 +1,17 @@
+{
+  "id": "map-card-component",
+  "category": "UI",
+  "title": "Mind Map Card Component",
+  "description": "Create card component for displaying individual map in grid. Show thumbnail, title, metadata, and quick actions menu.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "map-list-view",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.245Z",
+  "updatedAt": "2026-01-07T03:30:45.568Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:24:58.305Z"
+}

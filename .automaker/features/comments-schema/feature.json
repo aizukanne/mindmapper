@@ -1,0 +1,16 @@
+{
+  "id": "comments-schema",
+  "category": "Database",
+  "title": "Comments Database Schema",
+  "description": "Create Prisma schema for Comment model with threading support, node references, user attribution, resolved status, and timestamps.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "mind-map-schema"
+  ],
+  "createdAt": "2026-01-07T00:20:10.250Z",
+  "updatedAt": "2026-01-07T04:12:44.552Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T04:08:55.747Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "toolbar-component",
+  "category": "UI",
+  "title": "Editor Toolbar",
+  "description": "Create toolbar with buttons for adding nodes, undo/redo, layout, zoom, and export. Use icon buttons with tooltips.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "map-editor-page",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.246Z",
+  "updatedAt": "2026-01-07T03:42:55.998Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:37:49.308Z"
+}

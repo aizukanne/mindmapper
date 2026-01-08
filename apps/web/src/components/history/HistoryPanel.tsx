@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { X, History, RotateCcw, ChevronDown, ChevronRight, Loader2, User, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DiffViewer } from './DiffViewer';
+import { RestoreConfirmDialog } from './RestoreConfirmDialog';
 
 interface HistoryUser {
   id: string;
@@ -63,6 +64,8 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
   const [eventTypeFilter, setEventTypeFilter] = useState<EventTypeFilter>('ALL');
   const [entityTypeFilter, setEntityTypeFilter] = useState<EntityTypeFilter>('ALL');
   const [showFilters, setShowFilters] = useState(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [selectedEventForRestore, setSelectedEventForRestore] = useState<HistoryEvent | null>(null);
 
   // Filter events based on selected filters
   const filteredEvents = useMemo(() => {
@@ -100,14 +103,20 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
     fetchHistory();
   }, [fetchHistory]);
 
-  // Restore to a specific event
-  const handleRestore = async (eventId: string) => {
+  // Open restore confirmation dialog
+  const handleRestoreClick = (event: HistoryEvent) => {
     if (!isMapOwner) return;
-    if (!confirm('Are you sure you want to restore to this point? This will undo changes made after this event.')) {
-      return;
-    }
+    setSelectedEventForRestore(event);
+    setRestoreDialogOpen(true);
+  };
 
+  // Perform the actual restore
+  const handleRestoreConfirm = async () => {
+    if (!selectedEventForRestore) return;
+
+    const eventId = selectedEventForRestore.id;
     setRestoring(eventId);
+
     try {
       const response = await fetch(`${API_URL}/api/maps/${mapId}/restore/${eventId}`, {
         method: 'POST',
@@ -115,13 +124,28 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
       });
 
       if (response.ok) {
+        setRestoreDialogOpen(false);
+        setSelectedEventForRestore(null);
         await fetchHistory();
         onRestore?.();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to restore:', errorData.error || 'Unknown error');
       }
     } catch (error) {
       console.error('Failed to restore:', error);
     } finally {
       setRestoring(null);
+    }
+  };
+
+  // Close restore dialog
+  const handleRestoreDialogClose = (open: boolean) => {
+    if (!restoring) {
+      setRestoreDialogOpen(open);
+      if (!open) {
+        setSelectedEventForRestore(null);
+      }
     }
   };
 
@@ -156,14 +180,14 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
   };
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-background border-l border-border shadow-lg z-50 flex flex-col">
+    <div className="fixed right-0 top-0 h-full w-96 bg-background border-l border-border shadow-lg z-50 flex flex-col" data-testid="history-panel">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <History className="h-5 w-5" />
-          <h2 className="font-semibold">Version History</h2>
+          <h2 className="font-semibold" data-testid="history-panel-title">Version History</h2>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
+        <Button variant="ghost" size="icon" onClick={onClose} data-testid="history-panel-close">
           <X className="h-4 w-4" />
         </Button>
       </div>
@@ -234,7 +258,7 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
       </div>
 
       {/* Events list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" data-testid="history-events-list">
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -258,7 +282,7 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
               const hasDetails = event.previousState !== null || event.newState !== null;
 
               return (
-                <div key={event.id} className="p-3 hover:bg-muted/30">
+                <div key={event.id} className="p-3 hover:bg-muted/30" data-testid="history-event-item">
                   <div className="flex items-start gap-3">
                     {/* User avatar */}
                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -330,8 +354,10 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
                         variant="ghost"
                         size="sm"
                         className="shrink-0"
-                        onClick={() => handleRestore(event.id)}
+                        onClick={() => handleRestoreClick(event)}
                         disabled={restoring !== null}
+                        data-testid="restore-button"
+                        title="Restore to this version"
                       >
                         {restoring === event.id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -356,6 +382,15 @@ export function HistoryPanel({ mapId, isMapOwner, onClose, onRestore }: HistoryP
           </div>
         )}
       </div>
+
+      {/* Restore confirmation dialog */}
+      <RestoreConfirmDialog
+        open={restoreDialogOpen}
+        onOpenChange={handleRestoreDialogClose}
+        event={selectedEventForRestore}
+        onConfirm={handleRestoreConfirm}
+        isRestoring={restoring !== null}
+      />
     </div>
   );
 }

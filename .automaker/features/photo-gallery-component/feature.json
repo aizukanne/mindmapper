@@ -1,0 +1,17 @@
+{
+  "id": "photo-gallery-component",
+  "category": "UI",
+  "title": "Photo Gallery Component",
+  "description": "Create photo gallery with grid layout, lightbox viewer, person tagging interface, and privacy controls per photo.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "photo-upload-api",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.265Z",
+  "updatedAt": "2026-01-07T08:10:57.532Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:03:37.302Z"
+}

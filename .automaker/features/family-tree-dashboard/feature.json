@@ -1,0 +1,17 @@
+{
+  "id": "family-tree-dashboard",
+  "category": "UI",
+  "title": "Family Tree Dashboard",
+  "description": "Create dashboard showing user's family trees with cards, quick stats, and create new tree button. List invited trees separately.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "family-tree-api",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.262Z",
+  "updatedAt": "2026-01-07T03:14:02.064Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:06:53.758Z"
+}

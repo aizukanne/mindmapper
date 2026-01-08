@@ -1,0 +1,16 @@
+{
+  "id": "history-schema",
+  "category": "Database",
+  "title": "Version History Schema",
+  "description": "Create Prisma schema for Event model tracking all changes to maps and nodes. Store event type, entity, old/new values, and user.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "mind-map-schema"
+  ],
+  "createdAt": "2026-01-07T00:20:10.252Z",
+  "updatedAt": "2026-01-07T06:00:52.354Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:53:22.307Z"
+}

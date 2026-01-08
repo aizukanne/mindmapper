@@ -1,24 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FolderOpen, Star, Clock, Search, FileText, Trash2, MoreHorizontal, Loader2, FolderPlus, Upload, Menu, X, Users } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { Plus, FolderOpen, Star, Clock, Search, FileText, Loader2, FolderPlus, Upload, Menu, X, Users, SortAsc, SortDesc, Filter, ArrowUpDown, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TemplateGallery } from '@/components/templates/TemplateGallery';
+import { CreateMapDialog } from '@/components/maps/CreateMapDialog';
+import { MapCard, MindMap } from '@/components/maps/MapCard';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { FolderTree } from '@/components/sidebar/FolderTree';
 import { GlobalSearch, useGlobalSearchShortcut } from '@/components/search/GlobalSearch';
 import { ImportModal } from '@/components/import/ImportModal';
+import { MobileSidebarDrawer } from '@/components/mobile/MobileSidebarDrawer';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
-interface MindMap {
-  id: string;
-  title: string;
-  description: string | null;
-  thumbnail: string | null;
-  isFavorite: boolean;
-  folderId: string | null;
-  updatedAt: string;
-  createdAt: string;
-}
+type SortOption = 'updated' | 'created' | 'title';
+type SortDirection = 'asc' | 'desc';
+type FilterOption = 'all' | 'favorites' | 'recent';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -27,12 +29,20 @@ export default function Dashboard() {
   const [maps, setMaps] = useState<MindMap[]>([]);
   const [loading, setLoading] = useState(true);
   const [isTemplateGalleryOpen, setIsTemplateGalleryOpen] = useState(false);
+  const [isCreateMapDialogOpen, setIsCreateMapDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [movingMapId, setMovingMapId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Filter and sort state
+  const [sortBy, setSortBy] = useState<SortOption>('updated');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [filterBy, setFilterBy] = useState<FilterOption>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Global search keyboard shortcut (Ctrl/Cmd + K)
   useGlobalSearchShortcut(() => setIsSearchOpen(true));
@@ -85,18 +95,17 @@ export default function Dashboard() {
   };
 
   // Toggle favorite
-  const handleToggleFavorite = async (mapId: string, currentFavorite: boolean, e: React.MouseEvent) => {
+  const handleToggleFavorite = async (mapId: string, _currentFavorite: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const response = await fetch(`${API_URL}/api/maps/${mapId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch(`${API_URL}/api/maps/${mapId}/favorite`, {
+        method: 'PATCH',
         credentials: 'include',
-        body: JSON.stringify({ isFavorite: !currentFavorite }),
       });
       if (response.ok) {
+        const data = await response.json();
         setMaps((prev) =>
-          prev.map((m) => (m.id === mapId ? { ...m, isFavorite: !currentFavorite } : m))
+          prev.map((m) => (m.id === mapId ? { ...m, isFavorite: data.data.isFavorite } : m))
         );
       }
     } catch (error) {
@@ -104,8 +113,8 @@ export default function Dashboard() {
     }
   };
 
-  // Move map to folder
-  const handleMoveToFolder = async (mapId: string, folderId: string | null) => {
+  // Move map to folder (used by both menu action and drag-drop)
+  const handleMoveToFolder = useCallback(async (mapId: string, folderId: string | null) => {
     setMovingMapId(mapId);
     try {
       const targetFolder = folderId || 'root';
@@ -122,10 +131,81 @@ export default function Dashboard() {
     } finally {
       setMovingMapId(null);
     }
+  }, [fetchMaps]);
+
+  // Handle map dropped onto folder (from FolderTree component)
+  const handleMapDroppedOnFolder = useCallback((mapId: string, targetFolderId: string | null) => {
+    handleMoveToFolder(mapId, targetFolderId);
+  }, [handleMoveToFolder]);
+
+  // Filtered and sorted maps
+  const filteredAndSortedMaps = useMemo(() => {
+    let result = [...maps];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (map) =>
+          map.title.toLowerCase().includes(query) ||
+          (map.description && map.description.toLowerCase().includes(query))
+      );
+    }
+
+    // Apply category filter
+    switch (filterBy) {
+      case 'favorites':
+        result = result.filter((m) => m.isFavorite);
+        break;
+      case 'recent':
+        // Show maps updated within the last 7 days
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        result = result.filter((m) => new Date(m.updatedAt) >= sevenDaysAgo);
+        break;
+      case 'all':
+      default:
+        break;
+    }
+
+    // Apply sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case 'created':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'updated':
+        default:
+          comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+          break;
+      }
+      return sortDirection === 'desc' ? -comparison : comparison;
+    });
+
+    return result;
+  }, [maps, searchQuery, filterBy, sortBy, sortDirection]);
+
+  const favoriteMaps = filteredAndSortedMaps.filter((m) => m.isFavorite);
+  const recentMaps = filteredAndSortedMaps.filter((m) => !m.isFavorite);
+
+  // Toggle sort direction
+  const toggleSortDirection = () => {
+    setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
   };
 
-  const favoriteMaps = maps.filter((m) => m.isFavorite);
-  const recentMaps = maps.filter((m) => !m.isFavorite);
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setFilterBy('all');
+    setSortBy('updated');
+    setSortDirection('desc');
+  };
+
+  const hasActiveFilters = searchQuery.trim() !== '' || filterBy !== 'all';
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -164,11 +244,11 @@ export default function Dashboard() {
                 ⌘K
               </kbd>
             </button>
-            <Button onClick={() => setIsTemplateGalleryOpen(true)} className="hidden md:flex">
+            <Button onClick={() => setIsCreateMapDialogOpen(true)} className="hidden md:flex" data-testid="new-map-button">
               <Plus className="h-4 w-4 mr-2" />
               New Mind Map
             </Button>
-            <Button onClick={() => setIsTemplateGalleryOpen(true)} size="icon" className="md:hidden">
+            <Button onClick={() => setIsCreateMapDialogOpen(true)} size="icon" className="md:hidden" data-testid="new-map-button-mobile">
               <Plus className="h-5 w-5" />
             </Button>
             <Button
@@ -186,34 +266,15 @@ export default function Dashboard() {
 
       {/* Main layout with sidebar */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Mobile sidebar backdrop */}
-        {isSidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-        )}
-
-        {/* Sidebar */}
-        <aside
-          className={`
-            fixed md:relative inset-y-0 left-0 z-50 md:z-auto
-            w-64 border-r border-border bg-background md:bg-muted/30 p-4 overflow-y-auto shrink-0
-            transform transition-transform duration-300 ease-in-out
-            ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-          `}
+        {/* Mobile Sidebar Drawer - Only visible on mobile */}
+        <MobileSidebarDrawer
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          onOpen={() => setIsSidebarOpen(true)}
+          title="Folders"
+          enableEdgeSwipe={true}
+          enableSwipeToClose={true}
         >
-          {/* Mobile close button */}
-          <div className="flex items-center justify-between mb-4 md:hidden">
-            <h2 className="font-semibold">Folders</h2>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
           <FolderTree
             selectedFolderId={selectedFolderId}
             onSelectFolder={(id) => {
@@ -221,6 +282,22 @@ export default function Dashboard() {
               setIsSidebarOpen(false); // Close on mobile after selection
             }}
             onFolderChange={fetchMaps}
+            onMapDropped={handleMapDroppedOnFolder}
+          />
+        </MobileSidebarDrawer>
+
+        {/* Desktop Sidebar - Hidden on mobile */}
+        <aside
+          className="hidden md:block w-64 border-r border-border bg-muted/30 p-4 overflow-y-auto shrink-0"
+          data-testid="desktop-sidebar"
+        >
+          <FolderTree
+            selectedFolderId={selectedFolderId}
+            onSelectFolder={(id) => {
+              setSelectedFolderId(id);
+            }}
+            onFolderChange={fetchMaps}
+            onMapDropped={handleMapDroppedOnFolder}
           />
         </aside>
 
@@ -230,8 +307,9 @@ export default function Dashboard() {
           {selectedFolderId === null && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <button
-                onClick={() => setIsTemplateGalleryOpen(true)}
+                onClick={() => setIsCreateMapDialogOpen(true)}
                 className="flex items-center gap-4 p-4 border border-border rounded-lg hover:bg-accent transition-colors text-left"
+                data-testid="quick-create-button"
               >
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
                   <Plus className="h-6 w-6 text-primary" />
@@ -247,6 +325,7 @@ export default function Dashboard() {
               <button
                 onClick={() => setIsTemplateGalleryOpen(true)}
                 className="flex items-center gap-4 p-4 border border-border rounded-lg hover:bg-accent transition-colors text-left"
+                data-testid="template-gallery-button"
               >
                 <div className="h-12 w-12 rounded-full bg-orange-500/10 flex items-center justify-center">
                   <FolderOpen className="h-6 w-6 text-orange-500" />
@@ -284,6 +363,133 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* Filter and Sort Toolbar */}
+          <div className="mb-6 space-y-4" data-testid="filter-sort-toolbar">
+            {/* Search and main controls row */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Inline search */}
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search mind maps..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                  data-testid="search-input"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter and Sort controls */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Filter dropdown */}
+                <Select value={filterBy} onValueChange={(value: FilterOption) => setFilterBy(value)}>
+                  <SelectTrigger className="w-[140px]" data-testid="filter-select">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Maps</SelectItem>
+                    <SelectItem value="favorites">Favorites</SelectItem>
+                    <SelectItem value="recent">Recent (7 days)</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Sort dropdown */}
+                <Select value={sortBy} onValueChange={(value: SortOption) => setSortBy(value)}>
+                  <SelectTrigger className="w-[150px]" data-testid="sort-select">
+                    <ArrowUpDown className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="updated">Last Updated</SelectItem>
+                    <SelectItem value="created">Date Created</SelectItem>
+                    <SelectItem value="title">Title</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Sort direction toggle */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={toggleSortDirection}
+                  title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                  data-testid="sort-direction-toggle"
+                >
+                  {sortDirection === 'asc' ? (
+                    <SortAsc className="h-4 w-4" />
+                  ) : (
+                    <SortDesc className="h-4 w-4" />
+                  )}
+                </Button>
+
+                {/* View mode toggle */}
+                <div className="flex border border-border rounded-lg overflow-hidden">
+                  <Button
+                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                    size="icon"
+                    className="rounded-none"
+                    onClick={() => setViewMode('grid')}
+                    title="Grid view"
+                    data-testid="view-grid"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                    size="icon"
+                    className="rounded-none"
+                    onClick={() => setViewMode('list')}
+                    title="List view"
+                    data-testid="view-list"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Clear filters button */}
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="text-muted-foreground hover:text-foreground"
+                    data-testid="clear-filters"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Results count */}
+            {!loading && (
+              <div className="text-sm text-muted-foreground">
+                {filteredAndSortedMaps.length === 0 ? (
+                  hasActiveFilters ? (
+                    <span>No maps match your filters</span>
+                  ) : (
+                    <span>No mind maps yet</span>
+                  )
+                ) : (
+                  <span>
+                    Showing {filteredAndSortedMaps.length} {filteredAndSortedMaps.length === 1 ? 'map' : 'maps'}
+                    {hasActiveFilters && ' (filtered)'}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -306,7 +512,7 @@ export default function Dashboard() {
                     ? 'Move maps here or create a new one'
                     : 'Create your first mind map to get started'}
                 </p>
-                <Button onClick={() => setIsTemplateGalleryOpen(true)}>
+                <Button onClick={() => setIsCreateMapDialogOpen(true)} data-testid="empty-state-create-button">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Mind Map
                 </Button>
@@ -314,24 +520,32 @@ export default function Dashboard() {
             </section>
           ) : (
             <>
-              {/* Favorites - only show when viewing all maps */}
-              {selectedFolderId === null && favoriteMaps.length > 0 && (
+              {/* Favorites - only show when viewing all maps and filter is "all" */}
+              {selectedFolderId === null && filterBy === 'all' && favoriteMaps.length > 0 && (
                 <section className="mb-8">
                   <div className="flex items-center gap-2 mb-4">
                     <Star className="h-5 w-5 text-yellow-500" />
                     <h2 className="text-lg font-semibold">Favorites</h2>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  <div
+                    className={viewMode === 'grid'
+                      ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                      : "flex flex-col gap-2"
+                    }
+                    data-testid="favorites-grid"
+                  >
                     {favoriteMaps.map((map) => (
                       <MapCard
                         key={map.id}
                         map={map}
+                        viewMode={viewMode}
                         onClick={() => navigate(`/map/${map.id}`)}
                         onDelete={(e) => handleDelete(map.id, e)}
                         onToggleFavorite={(e) => handleToggleFavorite(map.id, map.isFavorite, e)}
                         onMoveToFolder={(folderId) => handleMoveToFolder(map.id, folderId)}
                         isDeleting={deletingId === map.id}
                         isMoving={movingMapId === map.id}
+                        draggable={true}
                       />
                     ))}
                   </div>
@@ -344,7 +558,11 @@ export default function Dashboard() {
                   {selectedFolderId === null ? (
                     <>
                       <Clock className="h-5 w-5 text-muted-foreground" />
-                      <h2 className="text-lg font-semibold">Recent Mind Maps</h2>
+                      <h2 className="text-lg font-semibold">
+                        {filterBy === 'favorites' ? 'Favorite Mind Maps' :
+                         filterBy === 'recent' ? 'Recently Updated' :
+                         'Recent Mind Maps'}
+                      </h2>
                     </>
                   ) : (
                     <>
@@ -353,22 +571,30 @@ export default function Dashboard() {
                     </>
                   )}
                 </div>
-                {(selectedFolderId === null ? recentMaps : maps).length === 0 ? (
+                {(selectedFolderId === null ? (filterBy === 'all' ? recentMaps : filteredAndSortedMaps) : filteredAndSortedMaps).length === 0 ? (
                   <p className="text-muted-foreground text-sm">
-                    No maps in this location
+                    {hasActiveFilters ? 'No maps match your filters' : 'No maps in this location'}
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {(selectedFolderId === null ? recentMaps : maps).map((map) => (
+                  <div
+                    className={viewMode === 'grid'
+                      ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                      : "flex flex-col gap-2"
+                    }
+                    data-testid="maps-grid"
+                  >
+                    {(selectedFolderId === null ? (filterBy === 'all' ? recentMaps : filteredAndSortedMaps) : filteredAndSortedMaps).map((map) => (
                       <MapCard
                         key={map.id}
                         map={map}
+                        viewMode={viewMode}
                         onClick={() => navigate(`/map/${map.id}`)}
                         onDelete={(e) => handleDelete(map.id, e)}
                         onToggleFavorite={(e) => handleToggleFavorite(map.id, map.isFavorite, e)}
                         onMoveToFolder={(folderId) => handleMoveToFolder(map.id, folderId)}
                         isDeleting={deletingId === map.id}
                         isMoving={movingMapId === map.id}
+                        draggable={true}
                       />
                     ))}
                   </div>
@@ -378,6 +604,13 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+
+      {/* Create Map Dialog */}
+      <CreateMapDialog
+        open={isCreateMapDialogOpen}
+        onOpenChange={setIsCreateMapDialogOpen}
+        folderId={selectedFolderId}
+      />
 
       {/* Template Gallery */}
       <TemplateGallery
@@ -401,116 +634,6 @@ export default function Dashboard() {
           navigate(`/map/${mapId}`);
         }}
       />
-    </div>
-  );
-}
-
-interface MapCardProps {
-  map: MindMap;
-  onClick: () => void;
-  onDelete: (e: React.MouseEvent) => void;
-  onToggleFavorite: (e: React.MouseEvent) => void;
-  onMoveToFolder: (folderId: string | null) => void;
-  isDeleting: boolean;
-  isMoving: boolean;
-}
-
-function MapCard({ map, onClick, onDelete, onToggleFavorite, onMoveToFolder, isDeleting, isMoving }: MapCardProps) {
-  const [showMenu, setShowMenu] = useState(false);
-
-  return (
-    <div
-      onClick={onClick}
-      className="group relative border border-border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all cursor-pointer"
-    >
-      {/* Thumbnail placeholder */}
-      <div className="h-32 rounded-md bg-muted flex items-center justify-center mb-3">
-        {map.thumbnail ? (
-          <img
-            src={map.thumbnail}
-            alt={map.title}
-            className="w-full h-full object-cover rounded-md"
-          />
-        ) : (
-          <FileText className="h-8 w-8 text-muted-foreground" />
-        )}
-      </div>
-
-      {/* Title and meta */}
-      <h3 className="font-medium truncate">{map.title}</h3>
-      <p className="text-xs text-muted-foreground mt-1">
-        Updated {formatDistanceToNow(new Date(map.updatedAt), { addSuffix: true })}
-      </p>
-
-      {/* Loading overlay for moving */}
-      {isMoving && (
-        <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-lg">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="flex gap-1">
-          <button
-            onClick={onToggleFavorite}
-            className="p-1.5 rounded-md bg-background/80 hover:bg-background border border-border"
-          >
-            <Star
-              className={`h-4 w-4 ${map.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
-            />
-          </button>
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowMenu(!showMenu);
-              }}
-              className="p-1.5 rounded-md bg-background/80 hover:bg-background border border-border"
-            >
-              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-            </button>
-            {showMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowMenu(false);
-                  }}
-                />
-                <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded-md shadow-lg z-50 py-1 min-w-[140px]">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowMenu(false);
-                      onMoveToFolder(null);
-                    }}
-                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
-                  >
-                    <FolderOpen className="h-3 w-3" />
-                    Move to Root
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      setShowMenu(false);
-                      onDelete(e);
-                    }}
-                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600 flex items-center gap-2"
-                  >
-                    {isDeleting ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3 w-3" />
-                    )}
-                    Delete
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

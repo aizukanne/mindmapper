@@ -1,0 +1,17 @@
+{
+  "id": "favorites-system",
+  "category": "Core",
+  "title": "Favorites/Starred Maps",
+  "description": "Add starred field to mind maps schema. Create API endpoints and UI for marking maps as favorites with dedicated dashboard section.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "mind-map-schema",
+    "dashboard-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.257Z",
+  "updatedAt": "2026-01-07T05:43:59.934Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:39:07.254Z"
+}

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useAuth } from '@clerk/clerk-react';
 import Dashboard from './pages/Dashboard';
@@ -6,9 +6,13 @@ import MapEditor from './pages/MapEditor';
 import FamilyTreeDashboard from './pages/FamilyTreeDashboard';
 import FamilyTreeEditor from './pages/FamilyTreeEditor';
 import AcceptInvitation from './pages/AcceptInvitation';
+import PublicShareView from './pages/PublicShareView';
+import NotFound from './pages/NotFound';
+import UIShowcase from './pages/UIShowcase';
 import SignIn from './pages/auth/SignIn';
 import SignUp from './pages/auth/SignUp';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { GlobalOfflineBanner } from './components/mobile/OfflineIndicator';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -29,6 +33,9 @@ function AppContentWithAuth() {
 
   return (
     <div className="h-screen w-screen overflow-hidden">
+      {/* Global offline indicator banner */}
+      <GlobalOfflineBanner />
+
       <Routes>
         {/* Auth routes */}
         <Route path="/sign-in/*" element={<SignIn />} />
@@ -36,6 +43,12 @@ function AppContentWithAuth() {
 
         {/* Public invitation route */}
         <Route path="/invitations/:invitationId" element={<AcceptInvitation />} />
+
+        {/* Public share route */}
+        <Route path="/share/:token" element={<PublicShareView />} />
+
+        {/* UI Showcase - public route for testing */}
+        <Route path="/ui-showcase" element={<UIShowcase />} />
 
         {/* Protected routes */}
         <Route
@@ -71,8 +84,8 @@ function AppContentWithAuth() {
           }
         />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* 404 Not Found */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
   );
@@ -82,9 +95,18 @@ function AppContentWithAuth() {
 function AppContentWithoutAuth() {
   return (
     <div className="h-screen w-screen overflow-hidden">
+      {/* Global offline indicator banner */}
+      <GlobalOfflineBanner />
+
       <Routes>
         {/* Public invitation route */}
         <Route path="/invitations/:invitationId" element={<AcceptInvitation />} />
+
+        {/* Public share route */}
+        <Route path="/share/:token" element={<PublicShareView />} />
+
+        {/* UI Showcase - public route for testing */}
+        <Route path="/ui-showcase" element={<UIShowcase />} />
 
         {/* Direct access to all routes when auth is disabled */}
         <Route path="/" element={<Dashboard />} />
@@ -92,8 +114,8 @@ function AppContentWithoutAuth() {
         <Route path="/family-trees" element={<FamilyTreeDashboard />} />
         <Route path="/family-tree/:treeId" element={<FamilyTreeEditor />} />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* 404 Not Found */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
   );

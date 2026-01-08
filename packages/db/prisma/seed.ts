@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, TemplateCategory } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -6,7 +6,7 @@ const defaultTemplates = [
   {
     name: 'Brainstorming',
     description: 'A simple template for brainstorming ideas around a central topic',
-    category: 'General',
+    category: TemplateCategory.BRAINSTORMING,
     thumbnail: null,
     isPublic: true,
     data: {
@@ -89,7 +89,7 @@ const defaultTemplates = [
   {
     name: 'SWOT Analysis',
     description: 'Strengths, Weaknesses, Opportunities, and Threats analysis template',
-    category: 'Business',
+    category: TemplateCategory.BUSINESS,
     thumbnail: null,
     isPublic: true,
     data: {
@@ -228,7 +228,7 @@ const defaultTemplates = [
   {
     name: 'Project Plan',
     description: 'A template for planning project phases and tasks',
-    category: 'Project Management',
+    category: TemplateCategory.PROJECT_MANAGEMENT,
     thumbnail: null,
     isPublic: true,
     data: {
@@ -381,7 +381,7 @@ const defaultTemplates = [
   {
     name: 'Meeting Notes',
     description: 'Template for organizing meeting notes with agenda, attendees, and action items',
-    category: 'General',
+    category: TemplateCategory.BUSINESS,
     thumbnail: null,
     isPublic: true,
     data: {
@@ -534,7 +534,7 @@ const defaultTemplates = [
   {
     name: 'Decision Tree',
     description: 'Template for mapping out decisions and their outcomes',
-    category: 'Decision Making',
+    category: TemplateCategory.STRATEGY,
     thumbnail: null,
     isPublic: true,
     data: {
@@ -645,7 +645,7 @@ const defaultTemplates = [
   {
     name: 'Mind Map',
     description: 'A blank mind map template with a central topic',
-    category: 'General',
+    category: TemplateCategory.MINDMAP,
     thumbnail: null,
     isPublic: true,
     data: {

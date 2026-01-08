@@ -1,0 +1,16 @@
+{
+  "id": "history-api",
+  "category": "API",
+  "title": "Version History API",
+  "description": "Create endpoints for fetching history events, filtering by date/type/entity, and restoring previous versions. Support pagination.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "history-tracking"
+  ],
+  "createdAt": "2026-01-07T00:20:10.252Z",
+  "updatedAt": "2026-01-07T06:21:34.786Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:11:07.317Z"
+}

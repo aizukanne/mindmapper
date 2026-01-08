@@ -1,0 +1,17 @@
+{
+  "id": "permission-check-middleware",
+  "category": "API",
+  "title": "Permission Check Middleware",
+  "description": "Create middleware to verify user has required permission level for map operations. Check ownership and share permissions.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "shares-api",
+    "clerk-backend-auth"
+  ],
+  "createdAt": "2026-01-07T00:20:10.250Z",
+  "updatedAt": "2026-01-07T08:30:20.174Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:23:28.366Z"
+}

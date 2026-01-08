@@ -1,0 +1,16 @@
+{
+  "id": "export-json",
+  "category": "Core",
+  "title": "Export to JSON",
+  "description": "Implement full JSON export including all map data, nodes, connections, and metadata. Ensure format is re-importable.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "map-editor-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.258Z",
+  "updatedAt": "2026-01-07T05:13:12.566Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:11:28.254Z"
+}

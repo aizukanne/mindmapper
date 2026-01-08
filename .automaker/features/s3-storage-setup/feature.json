@@ -1,0 +1,16 @@
+{
+  "id": "s3-storage-setup",
+  "category": "API",
+  "title": "AWS S3 Storage Integration",
+  "description": "Set up AWS S3 SDK for file uploads. Configure bucket, access keys, and implement upload/download functions with presigned URLs.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.264Z",
+  "updatedAt": "2026-01-07T07:39:54.006Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:38:22.254Z"
+}

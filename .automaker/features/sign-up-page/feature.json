@@ -1,0 +1,17 @@
+{
+  "id": "sign-up-page",
+  "category": "Authentication",
+  "title": "Sign Up Page",
+  "description": "Create sign-up page using Clerk's SignUp component. Add email verification flow and style consistently with sign-in page.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "clerk-frontend-provider",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.236Z",
+  "updatedAt": "2026-01-07T03:41:06.377Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:37:30.639Z"
+}

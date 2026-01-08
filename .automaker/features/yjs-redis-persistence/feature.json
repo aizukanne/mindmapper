@@ -1,0 +1,18 @@
+{
+  "id": "yjs-redis-persistence",
+  "category": "API",
+  "title": "Yjs Document Persistence to Database",
+  "description": "Implement server-side Yjs document persistence. Save document state to PostgreSQL and cache in Redis for performance.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "complex",
+  "dependencies": [
+    "websocket-server",
+    "redis-setup",
+    "initial-migration"
+  ],
+  "createdAt": "2026-01-07T00:20:10.243Z",
+  "updatedAt": "2026-01-07T03:50:42.709Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:45:24.887Z"
+}

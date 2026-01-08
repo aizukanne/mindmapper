@@ -1,0 +1,17 @@
+{
+  "id": "sign-in-page",
+  "category": "Authentication",
+  "title": "Sign In Page",
+  "description": "Create sign-in page using Clerk's SignIn component. Style with Tailwind to match application design and configure redirects.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "clerk-frontend-provider",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.236Z",
+  "updatedAt": "2026-01-07T03:37:48.212Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:36:06.911Z"
+}

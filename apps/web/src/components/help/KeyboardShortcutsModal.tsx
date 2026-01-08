@@ -34,9 +34,11 @@ const shortcutCategories: ShortcutCategory[] = [
     title: 'Navigation & View',
     shortcuts: [
       { keys: ['Space'], description: 'Pan mode (hold)' },
+      { keys: ['P'], description: 'Toggle pan mode' },
       { keys: ['+', '='], description: 'Zoom in' },
       { keys: ['-'], description: 'Zoom out' },
       { keys: ['Ctrl', '0'], description: 'Fit view' },
+      { keys: ['M'], description: 'Toggle minimap' },
     ],
   },
   {

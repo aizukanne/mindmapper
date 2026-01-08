@@ -1,0 +1,22 @@
+{
+  "category": "Uncategorized",
+  "description": "Implement Proper Sibling Relationship Management in Family Tree\n\nFix and enhance the sibling linking system to correctly establish and display family relationships based on shared parentage.\n\nRequirements:\n\n**Core Functionality:**\n- Automatically link all siblings who share the same parent(s) when a new child is created\n- Display all sibling relationships correctly in the tree view\n- Require both parents to be specified when creating a child from a parent node\n- Add parent selection interface in the configuration when creating a child\n\n**Relationship Types to Support:**\n- Full siblings: Children sharing both biological parents\n- Half siblings: Children sharing exactly one biological parent\n- Step siblings: Children with no shared biological parents but whose parents are partnered\n\n**Specific Fixes:**\n- Debug why newly created siblings are not auto-linking to existing siblings\n- Resolve tree view rendering issue that prevents siblings from appearing\n- Implement bidirectional sibling relationship updates (when A is added as sibling to B, B should automatically link to A)\n\n**Data Integrity:**\n- Validate that each child record references exactly two parent records\n- Update existing single-parent child records to require second parent selection\n- Prevent creation of child nodes without both parents specified\n\n**Edge Cases to Handle:**\n- Adding children to families with existing children\n- Modifying parent relationships for existing children\n- Orphaned nodes (if parent information is incomplete)\n- Distinguishing between different sibling types in the UI",
+  "title": "Implement sibling relationship linking in family tree",
+  "images": [],
+  "imagePaths": [],
+  "textFilePaths": [],
+  "skipTests": true,
+  "model": "opus",
+  "thinkingLevel": "none",
+  "branchName": "feature/family-tree",
+  "priority": 2,
+  "planningMode": "skip",
+  "requirePlanApproval": false,
+  "dependencies": [],
+  "titleGenerating": false,
+  "status": "waiting_approval",
+  "id": "feature-1767789886148-5dgel1h6g",
+  "startedAt": "2026-01-07T14:57:13.911Z",
+  "updatedAt": "2026-01-07T15:03:01.003Z",
+  "justFinishedAt": "2026-01-07T15:03:01.003Z"
+}

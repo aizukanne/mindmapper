@@ -1,0 +1,16 @@
+{
+  "id": "shares-schema",
+  "category": "Database",
+  "title": "Sharing Database Schema",
+  "description": "Create Prisma schema for Share model with permission levels (Owner, Editor, Commenter, Viewer), expiration, and password protection.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "mind-map-schema"
+  ],
+  "createdAt": "2026-01-07T00:20:10.249Z",
+  "updatedAt": "2026-01-07T08:12:05.674Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:05:55.304Z"
+}

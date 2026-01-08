@@ -1,0 +1,16 @@
+{
+  "id": "export-png",
+  "category": "Core",
+  "title": "Export to PNG",
+  "description": "Convert canvas to PNG image using canvas rendering. Support custom resolution and transparent background option.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "export-svg"
+  ],
+  "createdAt": "2026-01-07T00:20:10.259Z",
+  "updatedAt": "2026-01-07T05:38:18.883Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:31:34.331Z"
+}

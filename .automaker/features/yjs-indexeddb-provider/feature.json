@@ -1,0 +1,16 @@
+{
+  "id": "yjs-indexeddb-provider",
+  "category": "Collaboration",
+  "title": "Yjs IndexedDB Persistence",
+  "description": "Set up y-indexeddb provider for offline persistence. Sync local changes with remote server when connection is restored.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "yjs-core-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.243Z",
+  "updatedAt": "2026-01-07T03:51:14.099Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:42:58.304Z"
+}

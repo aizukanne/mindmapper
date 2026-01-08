@@ -1,0 +1,16 @@
+{
+  "id": "prisma-setup",
+  "category": "Database",
+  "title": "Prisma ORM Configuration",
+  "description": "Install Prisma in packages/db with PostgreSQL provider. Create initial schema with User model and set up migration scripts.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "docker-services"
+  ],
+  "createdAt": "2026-01-07T00:20:10.234Z",
+  "updatedAt": "2026-01-07T00:34:18.282Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T00:30:08.749Z"
+}

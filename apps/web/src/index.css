@@ -2,30 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   DESIGN TOKENS - CSS Custom Properties
+   ============================================ */
+
 @layer base {
   :root {
+    /* ---- Typography Tokens ---- */
+    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, 'Inconsolata', 'Roboto Mono', Consolas, monospace;
+    --font-display: 'Inter', system-ui, sans-serif;
+
+    /* ---- Layout Tokens ---- */
+    --sidebar-width: 280px;
+    --sidebar-collapsed-width: 64px;
+    --header-height: 56px;
+    --footer-height: 48px;
+    --toolbar-height: 48px;
+    --toolbar-width: 48px;
+
+    /* ---- Spacing Tokens ---- */
+    --space-unit: 4px;
+    --space-xs: calc(var(--space-unit) * 1);
+    --space-sm: calc(var(--space-unit) * 2);
+    --space-md: calc(var(--space-unit) * 4);
+    --space-lg: calc(var(--space-unit) * 6);
+    --space-xl: calc(var(--space-unit) * 8);
+    --space-2xl: calc(var(--space-unit) * 12);
+    --space-3xl: calc(var(--space-unit) * 16);
+
+    /* ---- Color Tokens - Base ---- */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
+
+    /* ---- Color Tokens - Primary Scale ---- */
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
+    --primary-50: 214 100% 97%;
+    --primary-100: 214 95% 93%;
+    --primary-200: 213 97% 87%;
+    --primary-300: 212 96% 78%;
+    --primary-400: 213 94% 68%;
+    --primary-500: 217 91% 60%;
+    --primary-600: 221 83% 53%;
+    --primary-700: 224 76% 48%;
+    --primary-800: 226 71% 40%;
+    --primary-900: 224 64% 33%;
+
+    /* ---- Color Tokens - Secondary ---- */
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
+
+    /* ---- Color Tokens - Muted ---- */
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
+
+    /* ---- Color Tokens - Accent ---- */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
+
+    /* ---- Color Tokens - Semantic: Destructive ---- */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
+
+    /* ---- Color Tokens - Semantic: Success ---- */
+    --success: 142 76% 36%;
+    --success-foreground: 143 100% 97%;
+
+    /* ---- Color Tokens - Semantic: Warning ---- */
+    --warning: 38 92% 50%;
+    --warning-foreground: 40 100% 97%;
+
+    /* ---- Color Tokens - Semantic: Info ---- */
+    --info: 199 89% 48%;
+    --info-foreground: 198 100% 97%;
+
+    /* ---- Color Tokens - Node Types (Mind Map) ---- */
+    --node-idea: 262 83% 58%;
+    --node-task: 142 76% 36%;
+    --node-note: 38 92% 50%;
+    --node-link: 199 89% 48%;
+
+    /* ---- Color Tokens - UI Elements ---- */
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
+
+    /* ---- Border Radius ---- */
     --radius: 0.5rem;
+    --radius-sm: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
+    --radius-2xl: 1rem;
+    --radius-full: 9999px;
+
+    /* ---- Shadow Tokens ---- */
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+    /* ---- Transition Tokens ---- */
+    --transition-fast: 150ms;
+    --transition-normal: 200ms;
+    --transition-slow: 300ms;
+    --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
+  /* ---- Dark Mode Tokens ---- */
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -33,8 +126,21 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
+
+    /* Primary scale for dark mode */
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 47.4% 11.2%;
+    --primary-50: 222 47% 11%;
+    --primary-100: 222 47% 15%;
+    --primary-200: 222 47% 20%;
+    --primary-300: 222 47% 30%;
+    --primary-400: 222 60% 45%;
+    --primary-500: 217 91% 60%;
+    --primary-600: 214 100% 70%;
+    --primary-700: 213 100% 78%;
+    --primary-800: 212 100% 85%;
+    --primary-900: 214 100% 93%;
+
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
@@ -43,6 +149,21 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
+
+    /* Semantic colors for dark mode */
+    --success: 142 69% 45%;
+    --success-foreground: 143 100% 97%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 40 100% 10%;
+    --info: 199 89% 55%;
+    --info-foreground: 198 100% 97%;
+
+    /* Node colors for dark mode */
+    --node-idea: 262 83% 65%;
+    --node-task: 142 69% 45%;
+    --node-note: 38 92% 55%;
+    --node-link: 199 89% 55%;
+
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
@@ -55,7 +176,362 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Typography reset */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+
+  /* Focus visible styling */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Selection styling */
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+}
+
+/* ============================================
+   COMPONENT LAYER - Reusable UI Components
+   ============================================ */
+
+@layer components {
+  /* ---- Card Components ---- */
+  .card-base {
+    @apply rounded-lg border bg-card text-card-foreground shadow-card;
+  }
+
+  .card-interactive {
+    @apply card-base transition-shadow duration-200 hover:shadow-card-hover;
+  }
+
+  /* ---- Button Base Styles ---- */
+  .btn-base {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium;
+    @apply transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2;
+    @apply focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none;
+    @apply disabled:opacity-50;
+  }
+
+  /* ---- Input Components ---- */
+  .input-base {
+    @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2;
+    @apply text-sm ring-offset-background placeholder:text-muted-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    @apply focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* ---- Node Components (Mind Map) ---- */
+  .node-base {
+    @apply rounded-lg border bg-card p-4 shadow-node transition-shadow duration-200;
+  }
+
+  .node-selected {
+    @apply shadow-node-selected ring-2 ring-primary;
+  }
+
+  .node-idea {
+    @apply border-l-4;
+    border-left-color: hsl(var(--node-idea));
+  }
+
+  .node-task {
+    @apply border-l-4;
+    border-left-color: hsl(var(--node-task));
+  }
+
+  .node-note {
+    @apply border-l-4;
+    border-left-color: hsl(var(--node-note));
+  }
+
+  .node-link {
+    @apply border-l-4;
+    border-left-color: hsl(var(--node-link));
+  }
+
+  /* ---- Badge Components ---- */
+  .badge-base {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+    @apply transition-colors;
+  }
+
+  .badge-success {
+    @apply badge-base bg-success/10 text-success;
+  }
+
+  .badge-warning {
+    @apply badge-base bg-warning/10 text-warning;
+  }
+
+  .badge-info {
+    @apply badge-base bg-info/10 text-info;
+  }
+
+  .badge-destructive {
+    @apply badge-base bg-destructive/10 text-destructive;
+  }
+
+  /* ---- Skeleton Loading ---- */
+  .skeleton {
+    @apply animate-pulse rounded-md bg-muted;
+  }
+
+  /* ---- Glass Morphism ---- */
+  .glass {
+    @apply bg-background/80 backdrop-blur-md;
+  }
+
+  .glass-heavy {
+    @apply bg-background/90 backdrop-blur-xl;
+  }
+
+  /* ---- Gradient Text ---- */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-primary-600 bg-clip-text text-transparent;
+  }
+
+  /* ---- Toolbar Styles ---- */
+  .toolbar {
+    @apply flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm;
+  }
+
+  .toolbar-button {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md;
+    @apply text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+  }
+
+  .toolbar-button-active {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground;
+  }
+
+  /* ---- Sidebar Styles ---- */
+  .sidebar {
+    @apply flex h-full w-sidebar flex-col border-r bg-background;
+    @apply transition-all duration-300;
+  }
+
+  .sidebar-collapsed {
+    @apply w-sidebar-collapsed;
+  }
+
+  /* ---- Dialog/Modal Overlay ---- */
+  .overlay {
+    @apply fixed inset-0 z-modal-backdrop bg-black/50 backdrop-blur-sm;
+  }
+
+  /* ---- Tooltip Styles ---- */
+  .tooltip-content {
+    @apply z-tooltip rounded-md bg-popover px-3 py-1.5 text-sm text-popover-foreground;
+    @apply shadow-md animate-fade-in;
+  }
+}
+
+/* ============================================
+   UTILITY LAYER - Custom Utility Classes
+   ============================================ */
+
+@layer utilities {
+  /* ---- Text Utilities ---- */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* ---- Scrollbar Utilities ---- */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ---- Animation Utilities ---- */
+  .animate-in {
+    animation-duration: var(--transition-normal);
+    animation-timing-function: var(--ease-out);
+    animation-fill-mode: both;
+  }
+
+  .animate-out {
+    animation-duration: var(--transition-fast);
+    animation-timing-function: var(--ease-in);
+    animation-fill-mode: both;
+  }
+
+  /* ---- Delay Utilities ---- */
+  .delay-75 {
+    animation-delay: 75ms;
+  }
+
+  .delay-100 {
+    animation-delay: 100ms;
+  }
+
+  .delay-150 {
+    animation-delay: 150ms;
+  }
+
+  .delay-200 {
+    animation-delay: 200ms;
+  }
+
+  .delay-300 {
+    animation-delay: 300ms;
+  }
+
+  .delay-500 {
+    animation-delay: 500ms;
+  }
+
+  /* ---- Responsive Hide Utilities ---- */
+  .hide-mobile {
+    @apply mobile:hidden;
+  }
+
+  .hide-tablet {
+    @apply tablet:hidden;
+  }
+
+  .hide-desktop {
+    @apply desktop:hidden;
+  }
+
+  .show-mobile-only {
+    @apply hidden mobile:block;
+  }
+
+  .show-tablet-only {
+    @apply hidden tablet:block;
+  }
+
+  .show-desktop-only {
+    @apply hidden desktop:block;
+  }
+
+  /* ---- Touch Utilities ---- */
+  .touch-pan-x {
+    touch-action: pan-x;
+  }
+
+  .touch-pan-y {
+    touch-action: pan-y;
+  }
+
+  .touch-pinch-zoom {
+    touch-action: pinch-zoom;
+  }
+
+  /* ---- Safe Area Insets ---- */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .safe-area {
+    @apply safe-top safe-bottom safe-left safe-right;
+  }
+
+  /* ---- Flex Utilities ---- */
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+
+  .flex-between {
+    @apply flex items-center justify-between;
+  }
+
+  .flex-start {
+    @apply flex items-center justify-start;
+  }
+
+  .flex-end {
+    @apply flex items-center justify-end;
+  }
+
+  /* ---- Grid Utilities ---- */
+  .grid-auto-fill-sm {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .grid-auto-fill-md {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+
+  .grid-auto-fill-lg {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+
+  /* ---- Truncate Utilities ---- */
+  .truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .truncate-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ---- Aspect Ratio Helpers ---- */
+  .aspect-card {
+    aspect-ratio: 16 / 10;
+  }
+
+  .aspect-thumbnail {
+    aspect-ratio: 4 / 3;
+  }
+
+  /* ---- Ring Offset Background Fix for Dark Mode ---- */
+  .ring-offset-background {
+    --tw-ring-offset-color: hsl(var(--background));
+  }
+
+  /* ---- Content Visibility for Performance ---- */
+  .content-auto {
+    content-visibility: auto;
+  }
+
+  /* ---- No Select ---- */
+  .no-select {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ---- Draggable Cursor ---- */
+  .cursor-grab-active:active {
+    cursor: grabbing;
   }
 }
 
@@ -111,4 +587,223 @@
   @apply text-xs px-2 py-0.5 rounded-full text-white whitespace-nowrap;
   transform: translate(-50%, -100%);
   margin-top: -8px;
+}
+
+/* ============================================
+   PRINT STYLES - PDF Export Optimization
+   ============================================ */
+
+/* Print page setup - Default A4 Landscape */
+@page {
+  size: A4 landscape;
+  margin: 15mm;
+}
+
+/* Named page rules for different orientations and sizes */
+@page portrait {
+  size: A4 portrait;
+}
+
+@page landscape {
+  size: A4 landscape;
+}
+
+@page a3-portrait {
+  size: A3 portrait;
+}
+
+@page a3-landscape {
+  size: A3 landscape;
+}
+
+@page letter-portrait {
+  size: letter portrait;
+}
+
+@page letter-landscape {
+  size: letter landscape;
+}
+
+/* Print media query */
+@media print {
+  /* Hide UI elements during print */
+  .no-print,
+  .react-flow__controls,
+  .react-flow__minimap,
+  .react-flow__attribution,
+  header,
+  nav,
+  aside,
+  footer:not(.print-footer),
+  .toolbar,
+  .sidebar,
+  [role="dialog"],
+  [role="menu"],
+  [role="tooltip"],
+  button:not(.print-button) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Reset backgrounds and colors for print */
+  html, body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
+
+  /* Remove shadows for cleaner print */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Ensure content fills the page */
+  .print-container {
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: relative;
+  }
+
+  /* Page break utilities */
+  .page-break-before {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .page-break-after {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .page-break-avoid {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Ensure proper rendering of SVG elements */
+  svg {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Print header styles */
+  .print-header {
+    text-align: center;
+    padding-bottom: 10mm;
+    border-bottom: 0.5pt solid #e5e7eb;
+    margin-bottom: 10mm;
+  }
+
+  .print-header h1 {
+    font-size: 18pt;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  /* Print footer styles */
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding-top: 5mm;
+    border-top: 0.5pt solid #e5e7eb;
+    font-size: 9pt;
+    color: #6b7280;
+  }
+
+  /* Content area for mind map */
+  .print-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: calc(100% - 30mm); /* Account for header and footer */
+    overflow: hidden;
+  }
+
+  /* Ensure nodes maintain their styling */
+  .react-flow__node {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Link styling for print */
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  a[href]::after {
+    content: none;
+  }
+
+  /* Table styling for print */
+  table {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Image optimization */
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Orphan and widow control */
+  p, h1, h2, h3, h4, h5, h6 {
+    orphans: 3;
+    widows: 3;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+}
+
+/* Print preview container (for screen display of print layout) */
+.print-preview {
+  @apply bg-white shadow-lg mx-auto;
+  aspect-ratio: 297 / 210; /* A4 landscape ratio */
+  max-width: 100%;
+  padding: 20px;
+}
+
+.print-preview.portrait {
+  aspect-ratio: 210 / 297; /* A4 portrait ratio */
+}
+
+.print-preview.a3 {
+  aspect-ratio: 420 / 297; /* A3 landscape ratio */
+}
+
+.print-preview.a3.portrait {
+  aspect-ratio: 297 / 420; /* A3 portrait ratio */
+}
+
+.print-preview.letter {
+  aspect-ratio: 11 / 8.5; /* Letter landscape ratio */
+}
+
+.print-preview.letter.portrait {
+  aspect-ratio: 8.5 / 11; /* Letter portrait ratio */
 }

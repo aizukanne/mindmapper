@@ -1,0 +1,16 @@
+{
+  "id": "awareness-protocol",
+  "category": "Collaboration",
+  "title": "Yjs Awareness Protocol",
+  "description": "Implement awareness protocol for broadcasting user presence, cursor positions, and selected nodes. Create awareness state structure.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "yjs-websocket-provider"
+  ],
+  "createdAt": "2026-01-07T00:20:10.244Z",
+  "updatedAt": "2026-01-07T04:59:30.153Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T04:47:01.338Z"
+}

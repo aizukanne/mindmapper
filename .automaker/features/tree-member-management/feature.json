@@ -1,0 +1,17 @@
+{
+  "id": "tree-member-management",
+  "category": "UI",
+  "title": "Tree Member Management",
+  "description": "Create UI for managing tree members: invite, change roles, remove members. Show pending invitations and acceptance status.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "family-tree-dashboard",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.264Z",
+  "updatedAt": "2026-01-07T08:28:46.050Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:20:50.766Z"
+}

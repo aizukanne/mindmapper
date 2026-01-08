@@ -1,0 +1,480 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project_specification>
+  <project_name>MindMapper</project_name>
+
+  <overview>
+    MindMapper is a collaborative visual thinking platform serving two primary use cases: Mind Mapping for organizing thoughts, projects, and ideas, and Family Tree Building for genealogical research and family history preservation. The platform features a real-time collaborative web-based mind mapping application with an intuitive drag-and-drop interface, supporting multi-user editing through Yjs CRDT technology. Both branches share common infrastructure including authentication (Clerk), real-time collaboration (WebSocket/Yjs), and cloud storage (PostgreSQL, Redis, S3), while offering specialized features for their respective domains. The Mind Map tool supports hierarchical node relationships, custom styling, templates, import/export in multiple formats, and comprehensive keyboard shortcuts. The Family Tree module provides role-based access control (Admin/Member/Viewer), person management with detailed biographical information, relationship tracking, photo and document galleries, family stories, suggested edits workflow, merge duplicate detection, GEDCOM import, and an activity feed for tracking changes.
+  </overview>
+
+  <technology_stack>
+    <technology>React 18+ with TypeScript</technology>
+    <technology>Vite 6 for frontend build tooling</technology>
+    <technology>React Flow (@xyflow/react) for canvas rendering</technology>
+    <technology>Tailwind CSS for styling</technology>
+    <technology>shadcn/ui (Radix UI) for UI components</technology>
+    <technology>Zustand for state management</technology>
+    <technology>Yjs for real-time collaboration and CRDT</technology>
+    <technology>y-websocket for WebSocket synchronization</technology>
+    <technology>y-indexeddb for offline persistence</technology>
+    <technology>Dagre (@dagrejs/dagre) for hierarchical layout</technology>
+    <technology>date-fns for date formatting</technology>
+    <technology>Lucide React for icons</technology>
+    <technology>Node.js with Express for backend API</technology>
+    <technology>TypeScript for type safety</technology>
+    <technology>PostgreSQL 16 for relational data storage</technology>
+    <technology>Prisma ORM for database access</technology>
+    <technology>Redis 7 for caching and session management</technology>
+    <technology>WebSocket (ws library) for real-time communication</technology>
+    <technology>Clerk for authentication (OAuth, email/password, 2FA)</technology>
+    <technology>AWS S3 for file storage (photos, documents)</technology>
+    <technology>Sharp for image processing</technology>
+    <technology>Multer for file uploads</technology>
+    <technology>Zod for input validation</technology>
+    <technology>Resend for email notifications</technology>
+    <technology>Docker Compose for local development services</technology>
+    <technology>Turborepo for monorepo management</technology>
+    <technology>pnpm 9 for package management</technology>
+    <technology>Helmet for security headers</technology>
+    <technology>CORS middleware</technology>
+    <technology>Compression middleware</technology>
+  </technology_stack>
+
+  <core_capabilities>
+    <capability>Real-time collaborative mind map editing with multi-user support</capability>
+    <capability>Infinite canvas with smooth pan/zoom (25%-400%)</capability>
+    <capability>Multiple node types (ROOT, CHILD, FLOATING) with customizable styles</capability>
+    <capability>Hierarchical and cross-link connections between nodes</capability>
+    <capability>Auto-layout algorithms (radial, tree, force-directed via Dagre)</capability>
+    <capability>Presence indicators showing active collaborators and their cursors</capability>
+    <capability>Selection indicators showing who is editing which nodes</capability>
+    <capability>Offline mode with IndexedDB persistence and automatic sync</capability>
+    <capability>Undo/redo support via Yjs UndoManager</capability>
+    <capability>Comments and annotations on nodes with threading</capability>
+    <capability>Version history with visual diff viewer and restore capability</capability>
+    <capability>Template gallery with pre-built templates (Brainstorming, SWOT, Project Plan, etc.)</capability>
+    <capability>Folder organization for mind maps with nested hierarchy</capability>
+    <capability>Global search across maps and nodes with keyboard shortcut (Ctrl+K)</capability>
+    <capability>Export to multiple formats (JSON, Markdown, SVG, PNG, PDF, Text)</capability>
+    <capability>Import from MindMapper JSON, simple JSON, and FreeMind XML</capability>
+    <capability>Comprehensive keyboard shortcuts for efficient editing</capability>
+    <capability>Mobile-responsive canvas with touch gestures (pinch zoom, two-finger pan)</capability>
+    <capability>Mobile toolbar and bottom sheet navigation</capability>
+    <capability>Role-based sharing (Owner, Editor, Commenter, Viewer)</capability>
+    <capability>Shareable links with optional expiration and password protection</capability>
+    <capability>User authentication via Clerk (email/password, OAuth)</capability>
+    <capability>Family tree creation with role-based access control (Admin/Member/Viewer)</capability>
+    <capability>Person management with detailed biographical information</capability>
+    <capability>Multiple relationship types (biological, adoptive, step, foster, guardian)</capability>
+    <capability>Marriage records with date and location tracking</capability>
+    <capability>Photo gallery with tagging and privacy controls</capability>
+    <capability>Document attachment system with OCR text extraction</capability>
+    <capability>Family story sharing with comments and likes</capability>
+    <capability>Suggested edits workflow for non-admin members</capability>
+    <capability>Merge duplicate person profiles with 30-day undo capability</capability>
+    <capability>GEDCOM import for migrating from other genealogy tools</capability>
+    <capability>Activity feed tracking all tree changes</capability>
+    <capability>Timeline view for family events</capability>
+    <capability>Tree statistics and completeness scoring</capability>
+    <capability>DNA information placeholder fields</capability>
+    <capability>Breadcrumb navigation for family lineage</capability>
+  </core_capabilities>
+
+  <implemented_features>
+    <feature>
+      <name>Mind Map Canvas with React Flow</name>
+      <description>Infinite canvas with zoom/pan controls, minimap navigator, background grid, and custom node types. Supports drag-and-drop positioning with smooth 60fps interactions.</description>
+      <file_locations>
+        <location>apps/web/src/components/canvas/Canvas.tsx</location>
+        <location>apps/web/src/components/canvas/MindMapNode.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Yjs Real-time Collaboration</name>
+      <description>CRDT-based real-time synchronization using Yjs with WebSocket provider for live collaboration, IndexedDB for offline persistence, and UndoManager for undo/redo support.</description>
+      <file_locations>
+        <location>apps/web/src/hooks/useYjsSync.ts</location>
+        <location>apps/web/src/lib/yjs-provider.ts</location>
+        <location>apps/api/src/yjs/server.ts</location>
+        <location>apps/api/src/yjs/persistence.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Clerk Authentication Integration</name>
+      <description>Complete authentication system with email/password registration, OAuth support (Google, Microsoft, GitHub ready), protected routes, user menu component, and Express middleware for API authentication.</description>
+      <file_locations>
+        <location>apps/web/src/pages/auth/SignIn.tsx</location>
+        <location>apps/web/src/pages/auth/SignUp.tsx</location>
+        <location>apps/web/src/components/auth/ProtectedRoute.tsx</location>
+        <location>apps/web/src/components/auth/UserMenu.tsx</location>
+        <location>apps/api/src/middleware/auth.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Mind Map CRUD API</name>
+      <description>Full REST API for mind map management including list, create, read, update, delete operations with folder filtering, node CRUD operations, batch operations, and permission checking.</description>
+      <file_locations>
+        <location>apps/api/src/routes/maps.ts</location>
+        <location>apps/api/src/routes/nodes.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Sharing System</name>
+      <description>Complete sharing functionality with permission levels (Viewer, Commenter, Editor), shareable link generation, public toggle, share revocation, and share modal UI.</description>
+      <file_locations>
+        <location>apps/api/src/routes/shares.ts</location>
+        <location>apps/web/src/components/sharing/ShareModal.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Real-time Presence &amp; Cursors</name>
+      <description>Live presence indicators showing active collaborators, remote cursor visualization, selection indicators showing who is editing which nodes, and presence list component.</description>
+      <file_locations>
+        <location>apps/web/src/components/collaboration/Cursors.tsx</location>
+        <location>apps/web/src/components/collaboration/PresenceList.tsx</location>
+        <location>apps/web/src/hooks/usePresence.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Comments System</name>
+      <description>Node-level commenting with threading support, resolve functionality, comment counts per node, visual badges for unresolved comments, and comment panel sidebar.</description>
+      <file_locations>
+        <location>apps/api/src/routes/comments.ts</location>
+        <location>apps/web/src/components/comments/CommentPanel.tsx</location>
+        <location>apps/web/src/components/comments/CommentThread.tsx</location>
+        <location>apps/web/src/hooks/useNodeComments.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Version History</name>
+      <description>Event-based history tracking with chronological list of changes, visual diff viewer showing property-level changes, restore functionality, and filtering by event/entity type.</description>
+      <file_locations>
+        <location>apps/api/src/routes/history.ts</location>
+        <location>apps/web/src/components/history/HistoryPanel.tsx</location>
+        <location>apps/web/src/components/history/DiffViewer.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Template System</name>
+      <description>Pre-built template gallery with categories (Business, Education, Personal), template creation from existing maps, template CRUD operations, and seeded default templates.</description>
+      <file_locations>
+        <location>apps/api/src/routes/templates.ts</location>
+        <location>apps/web/src/components/templates/TemplateGallery.tsx</location>
+        <location>packages/db/prisma/seed.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Folder Organization</name>
+      <description>Hierarchical folder structure for organizing mind maps, folder tree UI in sidebar, drag-and-drop organization, favorites/starred maps, and breadcrumb navigation.</description>
+      <file_locations>
+        <location>apps/api/src/routes/folders.ts</location>
+        <location>apps/web/src/components/sidebar/FolderTree.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Global Search</name>
+      <description>Full-text search across all maps and nodes with relevance scoring, search suggestions, keyboard navigation, Ctrl+K shortcut, and result highlighting.</description>
+      <file_locations>
+        <location>apps/api/src/routes/search.ts</location>
+        <location>apps/web/src/components/search/GlobalSearch.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Export System</name>
+      <description>Multi-format export supporting JSON (full data), Markdown outline, SVG, PNG (via canvas), PDF (print dialog), and plain text, with export modal UI.</description>
+      <file_locations>
+        <location>apps/api/src/routes/export.ts</location>
+        <location>apps/web/src/components/export/ExportModal.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Import System</name>
+      <description>Import functionality supporting MindMapper JSON, simple JSON, FreeMind XML formats, with drag-drop upload, automatic format detection, and preview before import.</description>
+      <file_locations>
+        <location>apps/api/src/routes/import.ts</location>
+        <location>apps/web/src/components/import/ImportModal.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Mobile Optimization</name>
+      <description>Touch gesture support (pinch zoom, two-finger pan, double-tap zoom), mobile toolbar with bottom sheet UI, responsive sidebar, offline indicator, and touch-friendly controls.</description>
+      <file_locations>
+        <location>apps/web/src/hooks/useTouchGestures.ts</location>
+        <location>apps/web/src/components/mobile/MobileToolbar.tsx</location>
+        <location>apps/web/src/components/mobile/OfflineIndicator.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Keyboard Shortcuts</name>
+      <description>Comprehensive keyboard shortcuts for node operations (Tab, Enter, Delete), undo/redo (Ctrl+Z/Y), zoom (+/-), duplicate (Ctrl+D), pan mode (Space), and help modal (Shift+?).</description>
+      <file_locations>
+        <location>apps/web/src/hooks/useKeyboard.ts</location>
+        <location>apps/web/src/components/help/KeyboardShortcutsModal.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Auto Layout</name>
+      <description>Automatic node positioning using Dagre algorithm with support for hierarchical layouts, manual positioning override, and on-demand layout triggering.</description>
+      <file_locations>
+        <location>apps/web/src/hooks/useAutoLayout.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Dashboard</name>
+      <description>Main dashboard view showing user&apos;s mind maps in grid layout with thumbnails, favorites section, recent maps, folder sidebar, quick actions for create/template/import.</description>
+      <file_locations>
+        <location>apps/web/src/pages/Dashboard.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Family Tree Management</name>
+      <description>Complete family tree CRUD operations with role-based access control (Admin/Member/Viewer), tree privacy settings, member management, and invitation system.</description>
+      <file_locations>
+        <location>apps/api/src/routes/familyTrees.ts</location>
+        <location>apps/web/src/pages/FamilyTreeDashboard.tsx</location>
+        <location>apps/web/src/pages/FamilyTreeEditor.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Person Management</name>
+      <description>Full person CRUD with detailed biographical fields (names, dates, places, biography, occupation), gender options, living status, privacy controls, and profile photos.</description>
+      <file_locations>
+        <location>apps/api/src/routes/familyTrees.ts</location>
+        <location>apps/web/src/components/tree/PersonCard.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Relationship System</name>
+      <description>Multiple relationship types (parent/child, spouse, sibling, adoptive, step, foster, guardian) with marriage records, divorce tracking, and birth order support.</description>
+      <file_locations>
+        <location>apps/api/src/routes/familyTrees.ts</location>
+        <location>packages/db/prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Photo Gallery</name>
+      <description>Tree-wide photo gallery with person tagging, privacy controls per photo, S3 storage integration, thumbnail generation, and photo metadata (date, location, caption).</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/PhotoGallery.tsx</location>
+        <location>apps/web/src/components/tree/PhotoPrivacySettings.tsx</location>
+        <location>apps/api/src/lib/storage.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Document Attachments</name>
+      <description>Source document system supporting multiple document types (certificates, records, photos, letters), OCR text extraction, approval workflow, watermarking, and citations.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/DocumentGallery.tsx</location>
+        <location>packages/db/prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Family Stories</name>
+      <description>Rich text story sharing with person linking, story status workflow (draft/pending/published), comments, likes, featured stories, and view tracking.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/StoryGallery.tsx</location>
+        <location>packages/db/prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Suggested Edits</name>
+      <description>Workflow for non-admin members to suggest corrections with suggestion types (update person, add relationship, correct date), admin review process, and email notifications.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/SuggestEditButton.tsx</location>
+        <location>apps/web/src/components/tree/SuggestionReview.tsx</location>
+        <location>apps/api/src/lib/email.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Merge Duplicates</name>
+      <description>Admin tool to identify and merge duplicate person profiles with field-by-field selection, relationship transfer, and 30-day reversible merge capability.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/MergeDuplicates.tsx</location>
+        <location>packages/db/prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>GEDCOM Import</name>
+      <description>Import family tree data from GEDCOM 5.5+ files with format detection, preview before import, field mapping, and issue flagging for invalid data.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/GedcomImport.tsx</location>
+        <location>apps/api/src/lib/gedcom-parser.ts</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Activity Feed</name>
+      <description>Chronological activity feed tracking all tree changes (member joins, person updates, photos, stories) with filtering by activity type and privacy controls.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/ActivityFeed.tsx</location>
+        <location>packages/db/prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Tree Statistics</name>
+      <description>Dashboard displaying tree metrics including total members, living/deceased counts, oldest/youngest members, generation depth, surname distribution, and completeness score.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/TreeStatistics.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Timeline View</name>
+      <description>Chronological timeline of family events (births, deaths, marriages) with event filtering, date range selection, and navigation to related persons.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/TimelineView.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Tree Search &amp; Navigation</name>
+      <description>Search people by name within tree, find me button to center on current user, breadcrumb navigation showing lineage path, and generation filtering.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/TreeSearch.tsx</location>
+        <location>apps/web/src/components/tree/BreadcrumbNav.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>DNA Information Placeholder</name>
+      <description>Fields for noting DNA test provider, haplogroups (Y-DNA, mtDNA), kit numbers, ethnicity notes, and match notes with privacy controls.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/DnaInfo.tsx</location>
+        <location>packages/db/prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Family Tree Canvas</name>
+      <description>Visual tree rendering with person cards, relationship lines, generation alignment, zoom/pan controls, and responsive layout.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/FamilyTreeCanvas.tsx</location>
+        <location>apps/web/src/components/tree/TreeControls.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Mobile Family Tree</name>
+      <description>Mobile-optimized family tree view with touch navigation, bottom sheet actions, mobile person cards, and quick add functionality.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/MobileFamilyTree.tsx</location>
+        <location>apps/web/src/components/tree/MobileBottomSheet.tsx</location>
+        <location>apps/web/src/components/tree/MobilePersonCard.tsx</location>
+        <location>apps/web/src/components/tree/MobileQuickAdd.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Gamification &amp; Badges</name>
+      <description>Profile completeness tracking, achievement badges (Historian, Connector), and suggested next actions for tree completion.</description>
+      <file_locations>
+        <location>apps/web/src/components/tree/CompletenessWidget.tsx</location>
+        <location>apps/web/src/components/tree/Badges.tsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Database Schema</name>
+      <description>Comprehensive Prisma schema covering users, mind maps, nodes, connections, shares, comments, events, templates, folders, family trees, persons, relationships, marriages, invitations, photos, documents, stories, suggestions, merges, and activity tracking.</description>
+      <file_locations>
+        <location>packages/db/prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Shared Type Definitions</name>
+      <description>TypeScript type definitions shared across frontend and backend including mind map types, family tree types, API request/response types, and default values.</description>
+      <file_locations>
+        <location>packages/types/src/index.ts</location>
+      </file_locations>
+    </feature>
+  </implemented_features>
+
+  <additional_requirements>
+    <requirement>Node.js 20+ required for runtime</requirement>
+    <requirement>pnpm 9+ for package management</requirement>
+    <requirement>Docker required for PostgreSQL 16 and Redis 7 local development</requirement>
+    <requirement>Clerk account required for authentication (publishable and secret keys)</requirement>
+    <requirement>AWS S3 or compatible storage for photos/documents (optional, local fallback available)</requirement>
+    <requirement>Resend account for email notifications (optional)</requirement>
+    <requirement>Minimum screen resolution support: 360px width for mobile</requirement>
+    <requirement>Browser requirements: Modern browsers with WebSocket support</requirement>
+    <requirement>Maximum tree depth: 20 generations</requirement>
+    <requirement>Maximum tree size: 10,000 people</requirement>
+    <requirement>Maximum file upload: 10MB for photos, 10MB for documents</requirement>
+    <requirement>Session management: 15-minute JWT access tokens, 7-day refresh tokens</requirement>
+    <requirement>Rate limiting on API endpoints for security</requirement>
+    <requirement>HTTPS required for production deployment</requirement>
+    <requirement>GDPR compliant with data export and deletion support</requirement>
+  </additional_requirements>
+
+  <development_guidelines>
+    <guideline>Use TypeScript for all code with strict type checking</guideline>
+    <guideline>Follow monorepo structure with Turborepo (apps/web, apps/api, packages/db, packages/types)</guideline>
+    <guideline>Use pnpm as package manager with workspace protocol for internal dependencies</guideline>
+    <guideline>Run database services via Docker Compose (PostgreSQL 16, Redis 7)</guideline>
+    <guideline>Generate Prisma client after schema changes (pnpm db:generate)</guideline>
+    <guideline>Use Zod for runtime input validation on API endpoints</guideline>
+    <guideline>Implement error handling middleware for consistent API error responses</guideline>
+    <guideline>Use Clerk for authentication - configure OAuth providers in Clerk dashboard</guideline>
+    <guideline>Environment variables required: DATABASE_URL, REDIS_URL, CLERK keys, API_URL</guideline>
+    <guideline>Frontend development server runs on port 5173, API on port 3001</guideline>
+    <guideline>WebSocket server for Yjs collaboration on /yjs path</guideline>
+    <guideline>Use React Flow for canvas interactions with custom node types</guideline>
+    <guideline>State management: Zustand for global state, React Context for UI state</guideline>
+    <guideline>Style components with Tailwind CSS utility classes</guideline>
+    <guideline>Use shadcn/ui components built on Radix UI primitives</guideline>
+    <guideline>Real-time collaboration through Yjs CRDT with WebSocket sync and IndexedDB persistence</guideline>
+    <guideline>Mobile-first responsive design with touch gesture support</guideline>
+    <guideline>Implement keyboard shortcuts for all major actions</guideline>
+    <guideline>Export formats should include re-importable JSON for data portability</guideline>
+    <guideline>Family tree role hierarchy: Admin &gt; Member &gt; Viewer</guideline>
+    <guideline>Members can only edit themselves and descendants, Admins can edit anyone</guideline>
+    <guideline>Living person privacy defaults should be protective</guideline>
+    <guideline>GDPR compliance: support data export and deletion requests</guideline>
+    <guideline>Use S3-compatible storage for photos and documents with Sharp for image processing</guideline>
+  </development_guidelines>
+
+  <implementation_roadmap>
+    <phase>
+      <name>Phase 1: Foundation &amp; Core Canvas</name>
+      <status>completed</status>
+      <description>Project setup with Turborepo monorepo, React/Vite frontend, Express backend, Prisma database, Docker services, Tailwind/shadcn UI, React Flow canvas with custom nodes, Yjs integration for collaboration, and Dagre auto-layout.</description>
+    </phase>
+    <phase>
+      <name>Phase 2: Backend API &amp; Yjs Server</name>
+      <status>completed</status>
+      <description>Express API with middleware (cors, helmet, compression), mind map CRUD endpoints, node operations, WebSocket server for Yjs with room-based document management, awareness protocol for presence, Redis pub/sub, and database persistence.</description>
+    </phase>
+    <phase>
+      <name>Phase 3: Authentication &amp; Sharing</name>
+      <status>completed</status>
+      <description>Clerk integration with React provider, sign-in/sign-up pages, protected routes, Express middleware, sharing system with permission levels, shareable links, and share management UI. OAuth providers ready for dashboard configuration.</description>
+    </phase>
+    <phase>
+      <name>Phase 4: Collaboration Features</name>
+      <status>completed</status>
+      <description>Real-time presence with cursor visualization, selection indicators, comments system with threading and resolution, version history with visual diff viewer, event filtering, and Yjs UndoManager integration.</description>
+    </phase>
+    <phase>
+      <name>Phase 5: Templates &amp; Organization</name>
+      <status>completed</status>
+      <description>Pre-built template gallery with categories, user template creation, folder hierarchy for map organization, global search with relevance scoring, favorites system, and keyboard navigation.</description>
+    </phase>
+    <phase>
+      <name>Phase 6: Export/Import &amp; Polish</name>
+      <status>completed</status>
+      <description>Multi-format export (JSON, Markdown, SVG, PNG, PDF, Text), import from JSON and FreeMind XML, mobile optimization with touch gestures, responsive UI, offline indicator, and comprehensive keyboard shortcuts help.</description>
+    </phase>
+    <phase>
+      <name>Phase 7: Family Tree Core</name>
+      <status>completed</status>
+      <description>Family tree CRUD with privacy settings, role-based access control (Admin/Member/Viewer), person management with biographical details, relationship types, marriage records, member invitations, and tree canvas visualization.</description>
+    </phase>
+    <phase>
+      <name>Phase 8: Family Tree Media &amp; Content</name>
+      <status>completed</status>
+      <description>Photo gallery with tagging and S3 storage, document attachments with OCR and approval workflow, family stories with comments/likes, suggested edits workflow, and duplicate merge capability.</description>
+    </phase>
+    <phase>
+      <name>Phase 9: Family Tree Advanced Features</name>
+      <status>completed</status>
+      <description>GEDCOM import for migration, activity feed tracking changes, tree statistics dashboard, timeline view, search and navigation, DNA information fields, mobile-optimized views, and gamification badges.</description>
+    </phase>
+    <phase>
+      <name>Remaining Tasks</name>
+      <status>pending</status>
+      <description>Configure OAuth providers (Google, Microsoft, GitHub) in Clerk dashboard, add XMind import support, implement email invite backend with Resend, add share link expiration enforcement, and run initial Prisma database migration.</description>
+    </phase>
+  </implementation_roadmap>
+</project_specification>

@@ -1,0 +1,16 @@
+{
+  "id": "offline-indicator",
+  "category": "Mobile",
+  "title": "Offline Mode Indicator",
+  "description": "Show banner when offline, indicate sync status, and notify when connection is restored. Handle offline edits gracefully.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "yjs-indexeddb-provider"
+  ],
+  "createdAt": "2026-01-07T00:20:10.261Z",
+  "updatedAt": "2026-01-07T07:29:42.288Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:18:55.254Z"
+}

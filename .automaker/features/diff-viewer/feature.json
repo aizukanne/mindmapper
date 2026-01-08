@@ -1,0 +1,16 @@
+{
+  "id": "diff-viewer",
+  "category": "UI",
+  "title": "Visual Diff Viewer",
+  "description": "Create component showing side-by-side or inline diff of property changes. Highlight additions, deletions, and modifications.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "history-panel"
+  ],
+  "createdAt": "2026-01-07T00:20:10.253Z",
+  "updatedAt": "2026-01-07T06:33:16.529Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:26:10.356Z"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "keyboard-shortcuts",
+  "category": "UI",
+  "title": "Keyboard Shortcuts System",
+  "description": "Implement keyboard shortcut handling for common actions: Tab (add child), Enter (add sibling), Delete (remove node), Ctrl+Z/Y (undo/redo).",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "map-editor-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.248Z",
+  "updatedAt": "2026-01-07T06:45:24.452Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:33:19.306Z"
+}

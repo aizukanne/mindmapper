@@ -1,0 +1,16 @@
+{
+  "id": "environment-config",
+  "category": "Core",
+  "title": "Environment Variable Management",
+  "description": "Set up .env files for frontend and backend with proper gitignore. Configure DATABASE_URL, REDIS_URL, API_URL, and Clerk keys.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "project-initialization"
+  ],
+  "createdAt": "2026-01-07T00:20:10.235Z",
+  "updatedAt": "2026-01-07T00:30:07.128Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T00:26:12.150Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "version-restore",
+  "category": "Core",
+  "title": "Version Restore Functionality",
+  "description": "Implement ability to restore map to previous version from history. Create confirmation dialog and handle state updates.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "history-api",
+    "yjs-sync-hook"
+  ],
+  "createdAt": "2026-01-07T00:20:10.253Z",
+  "updatedAt": "2026-01-07T08:53:58.568Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:47:56.542Z"
+}

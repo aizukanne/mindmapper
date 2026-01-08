@@ -1,0 +1,16 @@
+{
+  "id": "shareable-links",
+  "category": "API",
+  "title": "Shareable Link Generation",
+  "description": "Generate unique shareable URLs with optional password protection and expiration. Create public access endpoint with validation.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "shares-api"
+  ],
+  "createdAt": "2026-01-07T00:20:10.250Z",
+  "updatedAt": "2026-01-07T08:38:42.810Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:28:47.474Z"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "shared-types-package",
+  "category": "Core",
+  "title": "Shared TypeScript Types Package",
+  "description": "Create packages/types with shared type definitions for mind maps, nodes, users, and API contracts. Export types for both frontend and backend consumption.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "project-initialization"
+  ],
+  "createdAt": "2026-01-07T00:20:10.235Z",
+  "updatedAt": "2026-01-07T01:48:16.969Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T01:43:56.768Z"
+}

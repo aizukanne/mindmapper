@@ -1,0 +1,16 @@
+{
+  "id": "export-markdown",
+  "category": "Core",
+  "title": "Export to Markdown",
+  "description": "Convert mind map to hierarchical Markdown outline format. Preserve node structure and content with proper indentation.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "map-editor-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.258Z",
+  "updatedAt": "2026-01-07T05:14:10.052Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:07:37.320Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "folder-tree-component",
+  "category": "UI",
+  "title": "Folder Tree Sidebar",
+  "description": "Create collapsible folder tree in sidebar showing hierarchical structure. Support expand/collapse, create subfolder, and rename.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "folders-api",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.255Z",
+  "updatedAt": "2026-01-07T06:04:12.462Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:59:01.327Z"
+}

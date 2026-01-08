@@ -1,0 +1,17 @@
+{
+  "id": "family-tree-api",
+  "category": "API",
+  "title": "Family Tree CRUD API",
+  "description": "Create REST endpoints for family tree operations: create, read, update, delete with privacy settings and role-based access.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "family-tree-schema",
+    "clerk-backend-auth"
+  ],
+  "createdAt": "2026-01-07T00:20:10.262Z",
+  "updatedAt": "2026-01-07T00:53:40.615Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T00:44:53.757Z"
+}

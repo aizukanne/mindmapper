@@ -14,7 +14,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 
-import { errorHandler } from './middleware/errorHandler.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { clerkMiddleware, syncUser } from './middleware/auth.js';
 import { mapsRouter } from './routes/maps.js';
 import { nodesRouter } from './routes/nodes.js';
@@ -27,8 +27,14 @@ import { searchRouter } from './routes/search.js';
 import { exportRouter } from './routes/export.js';
 import { importRouter } from './routes/import.js';
 import { familyTreesRouter } from './routes/familyTrees.js';
+import { peopleRouter } from './routes/people.js';
+import { relationshipsRouter } from './routes/relationships.js';
+import { storageRouter } from './routes/storage.js';
+import { photosRouter } from './routes/photos.js';
+import { usersRouter } from './routes/users.js';
+import { shareableLinksRouter } from './routes/shareableLinks.js';
 import { setupYjsServer } from './yjs/server.js';
-import { connectRedis, disconnectRedis } from './lib/redis.js';
+import { connectRedis, disconnectRedis, getRedisStatus, isRedisHealthy } from './lib/redis.js';
 import { flushAllPending } from './yjs/persistence.js';
 
 const app = express();
@@ -53,8 +59,20 @@ if (process.env.CLERK_SECRET_KEY) {
 }
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  const redisHealthy = await isRedisHealthy();
+  const redisStatus = getRedisStatus();
+
+  res.json({
+    status: redisHealthy ? 'ok' : 'degraded',
+    timestamp: new Date().toISOString(),
+    services: {
+      redis: {
+        healthy: redisHealthy,
+        status: redisStatus,
+      },
+    },
+  });
 });
 
 // API routes
@@ -69,8 +87,17 @@ app.use('/api/search', searchRouter);
 app.use('/api/maps', exportRouter);
 app.use('/api/maps', importRouter);
 app.use('/api/family-trees', familyTreesRouter);
+app.use('/api/people', peopleRouter);
+app.use('/api/relationships', relationshipsRouter);
+app.use('/api/storage', storageRouter);
+app.use('/api/photos', photosRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/shareable-links', shareableLinksRouter);
 
-// Error handler
+// 404 handler for unmatched routes (must be before error handler)
+app.use(notFoundHandler);
+
+// Error handler (must be last)
 app.use(errorHandler);
 
 // Setup WebSocket server for Yjs

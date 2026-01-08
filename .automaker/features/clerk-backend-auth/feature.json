@@ -1,0 +1,16 @@
+{
+  "id": "clerk-backend-auth",
+  "category": "Authentication",
+  "title": "Clerk Backend Authentication Middleware",
+  "description": "Install Clerk SDK for Express and create authentication middleware. Verify JWT tokens and extract user information from Clerk session.",
+  "status": "completed",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.235Z",
+  "updatedAt": "2026-01-07T00:38:22.305Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T00:37:32.698Z"
+}

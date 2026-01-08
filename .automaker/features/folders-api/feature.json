@@ -1,0 +1,17 @@
+{
+  "id": "folders-api",
+  "category": "API",
+  "title": "Folders API Endpoints",
+  "description": "Create endpoints for folder CRUD operations, moving maps between folders, and retrieving folder hierarchy. Validate nesting depth.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "folders-schema",
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.255Z",
+  "updatedAt": "2026-01-07T05:58:59.041Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:50:13.310Z"
+}

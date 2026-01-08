@@ -1,0 +1,17 @@
+{
+  "id": "relationship-api",
+  "category": "API",
+  "title": "Relationship Management API",
+  "description": "Create endpoints for managing relationships between persons. Support multiple relationship types and validate circular references.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "complex",
+  "dependencies": [
+    "family-tree-schema",
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.262Z",
+  "updatedAt": "2026-01-07T01:43:54.128Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T01:31:32.820Z"
+}

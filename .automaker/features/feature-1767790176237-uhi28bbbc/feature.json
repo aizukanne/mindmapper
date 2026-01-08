@@ -1,0 +1,21 @@
+{
+  "category": "Uncategorized",
+  "description": "Enable Drag-and-Drop Rearrangement for People Cards and Configurable Connection Lines\n\nImplement interactive repositioning of people cards and add visual customization options for connection lines between cards to match standard mind mapping functionality.\n\nRequirements:\n\nDraggable People Cards:\n- Enable drag-and-drop functionality for all people cards on the canvas\n- Maintain card positions persistently after rearrangement\n- Update connection lines dynamically as cards are moved\n- Provide visual feedback during drag operations (cursor change, card elevation/shadow)\n- Prevent cards from overlapping or provide collision handling\n- Support smooth animation when releasing cards into new positions\n- Ensure touch device compatibility for drag operations\n\nConfigurable Connection Lines:\n- Add a setting to toggle between line styles: straight lines, right-angled (orthogonal) lines, and curved (bezier) lines\n- Store user's preferred connection line style\n- Apply the selected style consistently to all card connections\n- Ensure connection lines automatically reroute when cards are moved\n- Maintain connection endpoints anchored to appropriate card edges\n- Update all existing connections when style is changed\n\nEdge Cases to Consider:\n- Moving cards near canvas boundaries\n- Dragging cards with multiple connections\n- Performance with large numbers of cards and connections\n- Undo/redo support for card repositioning\n- Keyboard accessibility for moving cards\n- Connection line routing around other cards (for orthogonal lines)\n- Ensure cards to not open to details after dragging",
+  "title": "Add draggable people cards with configurable connection lines",
+  "images": [],
+  "imagePaths": [],
+  "textFilePaths": [],
+  "skipTests": false,
+  "model": "opus",
+  "thinkingLevel": "none",
+  "branchName": "feature/family-tree",
+  "priority": 1,
+  "planningMode": "full",
+  "requirePlanApproval": false,
+  "dependencies": [],
+  "titleGenerating": false,
+  "status": "verified",
+  "id": "feature-1767790176237-uhi28bbbc",
+  "startedAt": "2026-01-07T14:48:05.944Z",
+  "updatedAt": "2026-01-07T14:51:28.177Z"
+}

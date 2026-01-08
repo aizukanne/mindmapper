@@ -1,0 +1,17 @@
+{
+  "id": "photo-upload-api",
+  "category": "API",
+  "title": "Photo Upload API",
+  "description": "Create Multer-based endpoint for photo uploads with validation, Sharp processing, S3 storage, and database record creation.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "s3-storage-setup",
+    "image-processing"
+  ],
+  "createdAt": "2026-01-07T00:20:10.264Z",
+  "updatedAt": "2026-01-07T08:03:36.896Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:53:37.316Z"
+}

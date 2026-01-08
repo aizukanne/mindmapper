@@ -1,0 +1,17 @@
+{
+  "id": "template-gallery",
+  "category": "UI",
+  "title": "Template Gallery Component",
+  "description": "Create gallery view showing available templates organized by category. Include preview, description, and use template button.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "templates-api",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.254Z",
+  "updatedAt": "2026-01-07T08:54:15.335Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:47:55.525Z"
+}

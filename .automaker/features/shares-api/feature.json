@@ -1,0 +1,17 @@
+{
+  "id": "shares-api",
+  "category": "API",
+  "title": "Sharing API Endpoints",
+  "description": "Create endpoints for creating shares, listing shares, updating permissions, and revoking access. Validate permission levels and ownership.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "shares-schema",
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.249Z",
+  "updatedAt": "2026-01-07T08:22:03.792Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:20:49.254Z"
+}

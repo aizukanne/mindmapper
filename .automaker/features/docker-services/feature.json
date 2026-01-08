@@ -1,0 +1,16 @@
+{
+  "id": "docker-services",
+  "category": "Database",
+  "title": "Docker Compose Services",
+  "description": "Create docker-compose.yml with PostgreSQL 16 and Redis 7 services. Configure volumes, ports, and environment variables for local development.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "project-initialization"
+  ],
+  "createdAt": "2026-01-07T00:20:10.234Z",
+  "updatedAt": "2026-01-07T00:28:49.011Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T00:26:11.764Z"
+}

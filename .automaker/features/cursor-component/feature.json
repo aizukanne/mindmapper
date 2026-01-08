@@ -1,0 +1,16 @@
+{
+  "id": "cursor-component",
+  "category": "UI",
+  "title": "Remote Cursor Visualization",
+  "description": "Create component to render remote user cursors on canvas. Show user name, color, and cursor position with smooth animations.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "awareness-protocol"
+  ],
+  "createdAt": "2026-01-07T00:20:10.244Z",
+  "updatedAt": "2026-01-07T05:07:35.520Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T04:59:31.306Z"
+}

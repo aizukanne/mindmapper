@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, Image, Upload, Edit2, LayoutGrid, GitBranch } from 'lucide-react';
+import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, UserX, Image, Upload, Edit2, LayoutGrid, GitBranch, ImageIcon, Wrench, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/auth/UserMenu';
@@ -8,6 +8,7 @@ import { useTreePermissions } from '@/hooks/useTreePermissions';
 import { MemberManagementModal } from '@/components/family-tree/MemberManagementModal';
 import { PhotoPrivacySettings } from '@/components/tree/PhotoPrivacySettings';
 import { FamilyTreeCanvas } from '@/components/tree/FamilyTreeCanvas';
+import { PhotoGallery } from '@/components/tree/PhotoGallery';
 import { calculateAge } from '@/lib/dateUtils';
 import type { FamilyTree, Person, Relationship, RelationshipType, TreeRole, TreePhoto } from '@mindmapper/types';
 
@@ -35,6 +36,7 @@ interface FamilyTreeWithData extends FamilyTree {
     notes?: string | null;
     createdAt: Date;
     updatedAt: Date;
+    spouses?: Array<{ id: string; firstName: string; lastName: string }>;
   }>;
   members: Array<{
     id: string;
@@ -64,7 +66,8 @@ export default function FamilyTreeEditor() {
   const [isAddChildModalOpen, setIsAddChildModalOpen] = useState(false);
   const [isAddSpouseModalOpen, setIsAddSpouseModalOpen] = useState(false);
   const [isAddSiblingModalOpen, setIsAddSiblingModalOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'canvas' | 'grid'>('canvas');
+  const [viewMode, setViewMode] = useState<'canvas' | 'grid' | 'photos'>('canvas');
+  const [isMissingParentsModalOpen, setIsMissingParentsModalOpen] = useState(false);
 
   // Get user's role in this tree (use server-computed values if available)
   const userRole = tree?._currentUser?.role || null;
@@ -201,6 +204,82 @@ export default function FamilyTreeEditor() {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [isRepairingSiblings, setIsRepairingSiblings] = useState(false);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleRepairSiblings = async () => {
+    if (!tree) return;
+
+    const confirmRepair = window.confirm(
+      'This will comprehensively repair sibling and parent relationships:\n\n' +
+      'Phase 1: Transitive Sibling Linking\n' +
+      '• If A is a full sibling of B, and B is a full sibling of C, then A should also be linked to C\n\n' +
+      'Phase 2: Copy Parents from Full Siblings\n' +
+      '• If someone has a full sibling who has parents, copy those parents to them\n\n' +
+      'Phase 3: Create Missing Sibling Links\n' +
+      '• Create sibling relationships for people who share parents but aren\'t linked\n\n' +
+      'This is useful if:\n' +
+      '• Some siblings are only linked to one sibling, not all\n' +
+      '• Some people are missing parent connections\n' +
+      '• Sibling relationships are incomplete\n\n' +
+      'Continue?'
+    );
+
+    if (!confirmRepair) return;
+
+    setIsRepairingSiblings(true);
+    try {
+      const response = await fetch(`${API_URL}/api/family-trees/${treeId}/repair-siblings`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to repair relationships');
+      }
+
+      const result = await response.json();
+
+      const { parentsAdded, siblingsCreated, duplicatesRemoved, parentRelationships, siblingRelationships } = result.data;
+
+      if (parentsAdded > 0 || siblingsCreated > 0 || duplicatesRemoved > 0) {
+        let message = `Successfully repaired relationships:\n\n`;
+
+        if (duplicatesRemoved > 0) {
+          message += `Duplicate relationships removed: ${duplicatesRemoved}\n\n`;
+        }
+
+        if (parentsAdded > 0) {
+          message += `Parent links added (${parentsAdded}):\n`;
+          message += parentRelationships.map((r: { person: string; parent: string }) =>
+            `• ${r.person} → ${r.parent}`
+          ).join('\n');
+          message += '\n\n';
+        }
+
+        if (siblingsCreated > 0) {
+          message += `Sibling links created (${siblingsCreated}):\n`;
+          message += siblingRelationships.map((r: { from: string; to: string; type: string }) =>
+            `• ${r.from} ↔ ${r.to} (${r.type})`
+          ).join('\n');
+        }
+
+        alert(message);
+        // Refresh the tree to show the new relationships
+        fetchTree();
+      } else {
+        alert('No issues found. All relationships are properly linked with no duplicates.');
+      }
+    } catch (error) {
+      console.error('Failed to repair relationships:', error);
+      alert(error instanceof Error ? error.message : 'Failed to repair relationships');
+    } finally {
+      setIsRepairingSiblings(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center">
@@ -263,6 +342,17 @@ export default function FamilyTreeEditor() {
               <LayoutGrid className="w-4 h-4" />
               Grid
             </Button>
+            <Button
+              variant={viewMode === 'photos' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('photos')}
+              className="flex items-center gap-1.5"
+              title="Photo Gallery"
+              data-testid="photos-view-button"
+            >
+              <ImageIcon className="w-4 h-4" />
+              Photos
+            </Button>
           </div>
           {permissions.canAddPeople && (
             <Button
@@ -284,12 +374,40 @@ export default function FamilyTreeEditor() {
               Export Tree
             </Button>
           )}
+          {permissions.isAdmin && (
+            <Button
+              variant="outline"
+              onClick={handleRepairSiblings}
+              disabled={isRepairingSiblings}
+              className="flex items-center gap-2"
+              title="Repair missing parent links and sibling relationships"
+            >
+              {isRepairingSiblings ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Wrench className="w-4 h-4" />
+              )}
+              {isRepairingSiblings ? 'Repairing...' : 'Repair Relationships'}
+            </Button>
+          )}
+          {permissions.isAdmin && (
+            <Button
+              variant="outline"
+              onClick={() => setIsMissingParentsModalOpen(true)}
+              className="flex items-center gap-2"
+              title="View and fix people missing parent relationships"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              Missing Parents
+            </Button>
+          )}
           {permissions.canManageMembers && (
             <Button
               variant="outline"
               size="icon"
               onClick={() => setIsMemberManagementOpen(true)}
               title="Manage Members"
+              data-testid="manage-members-button"
             >
               <Settings className="w-4 h-4" />
             </Button>
@@ -330,7 +448,7 @@ export default function FamilyTreeEditor() {
             onBackgroundClick={() => setSelectedPerson(null)}
             className="w-full h-full"
           />
-        ) : (
+        ) : viewMode === 'grid' ? (
           /* Grid View */
           <div className="max-w-6xl mx-auto p-6 overflow-auto h-full">
             <div className="bg-white rounded-lg shadow p-6">
@@ -399,7 +517,20 @@ export default function FamilyTreeEditor() {
               </div>
             </div>
           </div>
-        )}
+        ) : viewMode === 'photos' ? (
+          /* Photos View */
+          <div className="max-w-7xl mx-auto p-6 overflow-auto h-full" data-testid="photo-gallery-view">
+            <PhotoGallery
+              treeId={tree.id}
+              people={tree.people}
+              onPersonClick={(personId) => {
+                const person = tree.people.find(p => p.id === personId);
+                if (person) setSelectedPerson(person);
+              }}
+              isAdmin={permissions.isAdmin}
+            />
+          </div>
+        ) : null}
       </main>
 
       {/* Add Person Modal */}
@@ -470,6 +601,8 @@ export default function FamilyTreeEditor() {
         <AddSpouseModal
           person={selectedPerson}
           treeId={treeId!}
+          relationships={tree.relationships}
+          marriages={tree.marriages}
           onClose={() => setIsAddSpouseModalOpen(false)}
           onSuccess={() => {
             setIsAddSpouseModalOpen(false);
@@ -483,6 +616,8 @@ export default function FamilyTreeEditor() {
         <AddSiblingModal
           person={selectedPerson}
           treeId={treeId!}
+          allPeople={tree.people}
+          relationships={tree.relationships}
           onClose={() => setIsAddSiblingModalOpen(false)}
           onSuccess={() => {
             setIsAddSiblingModalOpen(false);
@@ -500,6 +635,21 @@ export default function FamilyTreeEditor() {
           currentUserId={userId || ''}
           onClose={() => setIsMemberManagementOpen(false)}
           onRefresh={fetchTree}
+        />
+      )}
+
+      {/* Missing Parents Modal */}
+      {isMissingParentsModalOpen && tree && (
+        <MissingParentsModal
+          treeId={tree.id}
+          onClose={() => setIsMissingParentsModalOpen(false)}
+          onSelectPerson={(personId) => {
+            // Find the person and open their detail modal
+            const person = tree.people.find(p => p.id === personId);
+            if (person) {
+              setSelectedPerson(person);
+            }
+          }}
         />
       )}
     </div>
@@ -816,6 +966,26 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
   const [selectedPhoto, setSelectedPhoto] = useState<TreePhoto | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Check if person has an active (non-divorced) spouse
+  const existingSpouseIds = tree.relationships
+    .filter(r => r.relationshipType === 'SPOUSE' && (r.personFromId === person.id || r.personToId === person.id))
+    .map(r => r.personFromId === person.id ? r.personToId : r.personFromId);
+
+  const hasActiveSpouse = existingSpouseIds.some(spouseId => {
+    // Find marriage record between this person and the spouse
+    const marriageRecord = tree.marriages?.find(m => {
+      const spouseIdsInMarriage = m.spouses?.map(s => s.id) || [];
+      return spouseIdsInMarriage.includes(person.id) && spouseIdsInMarriage.includes(spouseId);
+    });
+
+    // If there's no marriage record, the spouse relationship is still active
+    if (!marriageRecord) return true;
+
+    // If marriage record exists but no divorce date, spouse is still active
+    return !marriageRecord.divorceDate;
+  });
+
   const [editFormData, setEditFormData] = useState({
     firstName: person.firstName,
     middleName: person.middleName || '',
@@ -1018,6 +1188,41 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
     }
   };
 
+  const handleRemovePerson = async () => {
+    const confirmed = window.confirm(
+      `Are you sure you want to remove ${person.firstName} ${person.lastName} from the family tree?\n\n` +
+      `This will PERMANENTLY DELETE this person and ALL their relationships.\n\n` +
+      `Unlike GDPR deletion, this completely removes the person from the tree. ` +
+      `You can add them again later, but you'll need to recreate all their relationships.\n\n` +
+      `This action cannot be undone. Continue?`
+    );
+
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`${API_URL}/api/family-trees/${tree.id}/people/${person.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        alert('Person has been removed from the family tree.');
+        onClose();
+        onRefresh();
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to remove person');
+      }
+    } catch (error) {
+      console.error('Failed to remove person:', error);
+      alert('Failed to remove person');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1214,7 +1419,7 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                       Add Child
                     </Button>
                   )}
-                  {canAddRelationships && (
+                  {canAddRelationships && !hasActiveSpouse && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1803,9 +2008,30 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 -mt-2">
                   <p className="text-xs text-amber-800">
-                    <strong>Permanent Action:</strong> This will permanently delete all personal information for this person.
+                    <strong>Anonymize Only:</strong> This will permanently delete all personal information for this person.
                     The person will be converted to a "Removed Member" placeholder to preserve family tree structure.
                     Relationships will be maintained but all personal details will be anonymized.
+                  </p>
+                </div>
+
+                {/* Remove Person from Tree */}
+                <div className="flex items-start gap-3 mt-4">
+                  <Button
+                    onClick={handleRemovePerson}
+                    disabled={deleting}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <UserX className="w-4 h-4 mr-2" />
+                    {deleting ? 'Removing...' : 'Remove Person from Tree'}
+                  </Button>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 -mt-2">
+                  <p className="text-xs text-red-800">
+                    <strong>Complete Removal:</strong> This will permanently delete this person AND all their relationships from the tree.
+                    Use this if you want to completely remove someone and potentially add them again later.
+                    All connections to other family members will be deleted.
                   </p>
                 </div>
               </div>
@@ -1933,6 +2159,8 @@ interface AddChildModalProps {
 interface AddSpouseModalProps {
   person: Person;
   treeId: string;
+  relationships: Relationship[];
+  marriages: FamilyTreeWithData['marriages'];
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -2067,14 +2295,58 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
       }
 
       // Create sibling relationships with existing children who share the same parents
-      const existingSiblings = getExistingSiblings(secondParentId || null);
-      const siblingType = childType === 'BIOLOGICAL' ? 'SIBLING' :
-                         childType === 'STEP' ? 'STEP_SIBLING' : 'SIBLING';
+      // Determine the sibling type based on how they're related
+      const getSiblingNotes = (siblingId: string): string | undefined => {
+        if (childType === 'STEP') return 'Step-sibling';
+        if (childType === 'ADOPTED') return 'Adoptive sibling';
+        if (childType === 'FOSTER') return 'Foster sibling';
 
-      for (const siblingId of existingSiblings) {
+        // For biological children, check if they share both parents (full) or one (half)
+        if (secondParentId) {
+          // Check if the sibling also has both parents
+          const siblingHasPrimaryParent = relationships.some(r =>
+            r.relationshipType === 'CHILD' && r.personFromId === parentPerson.id && r.personToId === siblingId
+          );
+          const siblingHasSecondParent = relationships.some(r =>
+            r.relationshipType === 'CHILD' && r.personFromId === secondParentId && r.personToId === siblingId
+          );
+
+          if (siblingHasPrimaryParent && siblingHasSecondParent) {
+            return 'Full sibling';
+          } else {
+            return 'Half-sibling';
+          }
+        }
+        return 'Half-sibling'; // Only one parent specified, so it's a half-sibling
+      };
+
+      // Get all siblings - for biological children, get all children of the primary parent
+      // Then create appropriate sibling relationships based on shared parentage
+      const getAllPotentialSiblings = (): string[] => {
+        const primaryParentChildren = relationships
+          .filter(r => r.relationshipType === 'CHILD' && r.personFromId === parentPerson.id)
+          .map(r => r.personToId);
+
+        if (secondParentId) {
+          // Also include children of second parent
+          const secondParentChildren = relationships
+            .filter(r => r.relationshipType === 'CHILD' && r.personFromId === secondParentId)
+            .map(r => r.personToId);
+
+          // Combine and dedupe
+          return [...new Set([...primaryParentChildren, ...secondParentChildren])];
+        }
+
+        return primaryParentChildren;
+      };
+
+      const potentialSiblings = getAllPotentialSiblings();
+
+      for (const siblingId of potentialSiblings) {
         if (siblingId === newChild.id) continue; // Skip self
 
         try {
+          const siblingNotes = getSiblingNotes(siblingId);
           await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2082,10 +2354,8 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
             body: JSON.stringify({
               personFromId: newChild.id,
               personToId: siblingId,
-              relationshipType: siblingType,
-              notes: childType === 'BIOLOGICAL' ? 'Full sibling' :
-                     childType === 'STEP' ? 'Step-sibling' :
-                     childType === 'ADOPTED' ? 'Adoptive sibling' : 'Foster sibling',
+              relationshipType: 'SIBLING', // Always use SIBLING - type is stored in notes
+              notes: siblingNotes,
             }),
           });
         } catch (err) {
@@ -2131,7 +2401,12 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Parents Selection */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Parents</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              Parents <span className="text-red-500">*</span>
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Both parents are required to properly establish family relationships and sibling connections.
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">First Parent</label>
@@ -2140,26 +2415,59 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Second Parent</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Second Parent <span className="text-red-500">*</span>
+                </label>
                 <select
                   value={secondParentId}
                   onChange={(e) => setSecondParentId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    !secondParentId && spouses.length > 0 ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                  required
                 >
-                  <option value="">-- No second parent --</option>
+                  <option value="">-- Select second parent --</option>
                   {spouses.map((spouse) => (
                     <option key={spouse.id} value={spouse.id}>
                       {spouse.firstName} {spouse.lastName}
                     </option>
                   ))}
+                  {/* Allow selecting any person from the tree as second parent */}
+                  {allPeople
+                    .filter(p => p.id !== parentPerson.id && !spouses.some(s => s.id === p.id))
+                    .length > 0 && (
+                    <optgroup label="Other people in tree">
+                      {allPeople
+                        .filter(p => p.id !== parentPerson.id && !spouses.some(s => s.id === p.id))
+                        .map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.firstName} {person.lastName}
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
                 </select>
-                {spouses.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    No spouses found. Add a spouse first to select a second parent.
+                {!secondParentId && (
+                  <p className="text-xs text-amber-600 mt-1 bg-amber-50 p-2 rounded">
+                    {spouses.length === 0
+                      ? 'No spouses found. You may select any person from the tree or add a spouse first.'
+                      : 'Please select a second parent to establish proper sibling relationships.'}
                   </p>
                 )}
               </div>
             </div>
+            {!secondParentId && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800">
+                  <strong>Why both parents?</strong> Having both parents specified allows the system to:
+                </p>
+                <ul className="text-xs text-blue-700 mt-1 list-disc list-inside space-y-0.5">
+                  <li>Automatically link full siblings (same parents)</li>
+                  <li>Distinguish half-siblings (one shared parent)</li>
+                  <li>Display accurate family tree connections</li>
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Child Type Selection */}
@@ -2318,11 +2626,20 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
           </div>
 
           {/* Info about automatic sibling creation */}
-          {secondParentId && getExistingSiblings(secondParentId).length > 0 && (
+          {secondParentId && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-xs text-blue-800">
-                <strong>Note:</strong> This child will automatically be linked as a sibling to the {getExistingSiblings(secondParentId).length} existing child{getExistingSiblings(secondParentId).length !== 1 ? 'ren' : ''} of both parents.
+                <strong>Automatic Sibling Linking:</strong> This child will be automatically linked as a sibling to all existing children of either parent.
+                {getExistingSiblings(secondParentId).length > 0 && (
+                  <span>
+                    {' '}This includes {getExistingSiblings(secondParentId).length} full sibling{getExistingSiblings(secondParentId).length !== 1 ? 's' : ''} (children of both parents).
+                  </span>
+                )}
               </p>
+              <ul className="text-xs text-blue-700 mt-1 list-disc list-inside">
+                <li>Children sharing both parents will be linked as <strong>full siblings</strong></li>
+                <li>Children sharing one parent will be linked as <strong>half-siblings</strong></li>
+              </ul>
             </div>
           )}
 
@@ -2340,7 +2657,8 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
                 type="button"
                 variant="outline"
                 onClick={(e) => handleSubmit(e, true)}
-                disabled={loading || !formData.firstName.trim() || !formData.lastName.trim()}
+                disabled={loading || !formData.firstName.trim() || !formData.lastName.trim() || !secondParentId}
+                title={!secondParentId ? 'Please select a second parent' : undefined}
               >
                 {loading ? (
                   <>
@@ -2353,7 +2671,8 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
               </Button>
               <Button
                 type="submit"
-                disabled={loading || !formData.firstName.trim() || !formData.lastName.trim()}
+                disabled={loading || !formData.firstName.trim() || !formData.lastName.trim() || !secondParentId}
+                title={!secondParentId ? 'Please select a second parent' : undefined}
               >
                 {loading ? (
                   <>
@@ -2372,7 +2691,7 @@ function AddChildModal({ parentPerson, treeId, allPeople, relationships, onClose
   );
 }
 
-function AddSpouseModal({ person, treeId, onClose, onSuccess }: AddSpouseModalProps) {
+function AddSpouseModal({ person, treeId, relationships, marriages, onClose, onSuccess }: AddSpouseModalProps) {
   const [formData, setFormData] = useState({
     firstName: '',
     middleName: '',
@@ -2394,6 +2713,36 @@ function AddSpouseModal({ person, treeId, onClose, onSuccess }: AddSpouseModalPr
     notes: '',
   });
   const [loading, setLoading] = useState(false);
+
+  // Find existing spouse relationships for this person
+  const existingSpouseRelationships = relationships.filter(r =>
+    r.relationshipType === 'SPOUSE' &&
+    (r.personFromId === person.id || r.personToId === person.id)
+  );
+
+  // Get IDs of existing spouses
+  const existingSpouseIds = existingSpouseRelationships.map(r =>
+    r.personFromId === person.id ? r.personToId : r.personFromId
+  );
+
+  // Check if person has an active (non-divorced) spouse
+  // For each spouse relationship, check if there's a marriage record with a divorce date
+  const hasActiveSpouse = existingSpouseIds.some(spouseId => {
+    // Find marriage record between this person and the spouse
+    const marriageRecord = marriages?.find(m => {
+      const spouseIdsInMarriage = m.spouses?.map(s => s.id) || [];
+      return spouseIdsInMarriage.includes(person.id) && spouseIdsInMarriage.includes(spouseId);
+    });
+
+    // If there's no marriage record, the spouse relationship is still active
+    // If there is a marriage record, check if it's divorced
+    if (!marriageRecord) {
+      return true; // Spouse relationship exists without marriage record = active
+    }
+
+    // If marriage record exists but no divorce date, spouse is still active
+    return !marriageRecord.divorceDate;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2479,6 +2828,17 @@ function AddSpouseModal({ person, treeId, onClose, onSuccess }: AddSpouseModalPr
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Warning if person already has an active spouse */}
+          {hasActiveSpouse && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <p className="text-sm text-amber-800">
+                <strong>Note:</strong> {person.firstName} {person.lastName} already has an active spouse/partner.
+                Adding another spouse will create a concurrent marriage. If the previous relationship ended,
+                please add a divorce date to that marriage record first.
+              </p>
+            </div>
+          )}
+
           {/* Basic Information */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Basic Information</h3>
@@ -2700,11 +3060,13 @@ function AddSpouseModal({ person, treeId, onClose, onSuccess }: AddSpouseModalPr
 interface AddSiblingModalProps {
   person: Person;
   treeId: string;
+  allPeople: Person[];
+  relationships: Relationship[];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function AddSiblingModal({ person, treeId, onClose, onSuccess }: AddSiblingModalProps) {
+function AddSiblingModal({ person, treeId, allPeople, relationships, onClose, onSuccess }: AddSiblingModalProps) {
   const initialFormData = {
     firstName: '',
     middleName: '',
@@ -2721,10 +3083,59 @@ function AddSiblingModal({ person, treeId, onClose, onSuccess }: AddSiblingModal
   const [siblingType, setSiblingType] = useState<'FULL' | 'HALF' | 'STEP'>('FULL');
   const [birthOrder, setBirthOrder] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [selectedParents, setSelectedParents] = useState<string[]>([]);
+  const [sharedParent, setSharedParent] = useState<string>('');
+
+  // Get the reference person's parents
+  const referencePersonParents = relationships
+    .filter(r =>
+      (r.relationshipType === 'CHILD' && r.personToId === person.id) ||
+      (r.relationshipType === 'PARENT' && r.personFromId === person.id)
+    )
+    .map(r => r.relationshipType === 'CHILD' ? r.personFromId : r.personToId)
+    .filter((id, index, arr) => arr.indexOf(id) === index); // Dedupe
+
+  const parentPeople = referencePersonParents
+    .map(id => allPeople.find(p => p.id === id))
+    .filter((p): p is Person => p !== undefined);
+
+  // Initialize selected parents when sibling type changes
+  useEffect(() => {
+    if (siblingType === 'FULL') {
+      setSelectedParents(referencePersonParents);
+    } else if (siblingType === 'HALF') {
+      // Default to first parent for half-sibling
+      setSharedParent(referencePersonParents[0] || '');
+      setSelectedParents(referencePersonParents[0] ? [referencePersonParents[0]] : []);
+    } else {
+      // Step-sibling - no shared parents
+      setSelectedParents([]);
+      setSharedParent('');
+    }
+  }, [siblingType]);
+
+  // Get existing siblings of the reference person (to link the new sibling to them too)
+  const existingSiblings = relationships
+    .filter(r =>
+      r.relationshipType === 'SIBLING' &&
+      (r.personFromId === person.id || r.personToId === person.id)
+    )
+    .map(r => r.personFromId === person.id ? r.personToId : r.personFromId)
+    .filter((id, index, arr) => arr.indexOf(id) === index);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.firstName.trim()) return;
+
+    // Validate parent selection based on sibling type
+    if (siblingType === 'FULL' && selectedParents.length < 2 && parentPeople.length >= 2) {
+      alert('For full siblings, both parents should be shared. Please ensure both parents are selected.');
+      return;
+    }
+    if (siblingType === 'HALF' && !sharedParent) {
+      alert('For half-siblings, please select the shared parent.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -2750,7 +3161,10 @@ function AddSiblingModal({ person, treeId, onClose, onSuccess }: AddSiblingModal
       const personData = await personResponse.json();
       const newSibling = personData.data;
 
-      // Create the SIBLING relationship
+      // Create the SIBLING relationship with reference person
+      const siblingNotes = siblingType === 'FULL' ? 'Full sibling' :
+                          siblingType === 'HALF' ? 'Half-sibling' : 'Step-sibling';
+
       const relationshipResponse = await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2759,7 +3173,7 @@ function AddSiblingModal({ person, treeId, onClose, onSuccess }: AddSiblingModal
           personFromId: person.id,
           personToId: newSibling.id,
           relationshipType: 'SIBLING',
-          notes: siblingType === 'FULL' ? undefined : `${siblingType.charAt(0) + siblingType.slice(1).toLowerCase()}-sibling`,
+          notes: siblingNotes,
           birthOrder: birthOrder ? parseInt(birthOrder) : undefined,
         }),
       });
@@ -2769,6 +3183,69 @@ function AddSiblingModal({ person, treeId, onClose, onSuccess }: AddSiblingModal
         alert(error.message || 'Sibling created but failed to establish relationship');
         setLoading(false);
         return;
+      }
+
+      // Create parent-child relationships for the new sibling
+      const parentsToLink = siblingType === 'FULL' ? selectedParents :
+                           siblingType === 'HALF' ? [sharedParent] : [];
+
+      for (const parentId of parentsToLink) {
+        if (!parentId) continue;
+        try {
+          await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              personFromId: parentId,
+              personToId: newSibling.id,
+              relationshipType: 'CHILD',
+            }),
+          });
+        } catch (err) {
+          console.error(`Failed to create parent relationship with ${parentId}:`, err);
+        }
+      }
+
+      // Create sibling relationships with existing siblings
+      // Determine sibling type for each existing sibling based on shared parents
+      for (const existingSiblingId of existingSiblings) {
+        try {
+          // Check how many parents the new sibling shares with this existing sibling
+          const existingSiblingParents = relationships
+            .filter(r =>
+              (r.relationshipType === 'CHILD' && r.personToId === existingSiblingId) ||
+              (r.relationshipType === 'PARENT' && r.personFromId === existingSiblingId)
+            )
+            .map(r => r.relationshipType === 'CHILD' ? r.personFromId : r.personToId);
+
+          const sharedParentsWithExisting = parentsToLink.filter(pid =>
+            existingSiblingParents.includes(pid)
+          );
+
+          let existingSiblingNotes: string;
+          if (sharedParentsWithExisting.length >= 2) {
+            existingSiblingNotes = 'Full sibling';
+          } else if (sharedParentsWithExisting.length === 1) {
+            existingSiblingNotes = 'Half-sibling';
+          } else {
+            existingSiblingNotes = 'Step-sibling';
+          }
+
+          await fetch(`${API_URL}/api/family-trees/${treeId}/relationships`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              personFromId: newSibling.id,
+              personToId: existingSiblingId,
+              relationshipType: 'SIBLING',
+              notes: existingSiblingNotes,
+            }),
+          });
+        } catch (err) {
+          console.error(`Failed to create sibling relationship with ${existingSiblingId}:`, err);
+        }
       }
 
       onSuccess();
@@ -2832,13 +3309,100 @@ function AddSiblingModal({ person, treeId, onClose, onSuccess }: AddSiblingModal
                 <div className="text-xs mt-1 opacity-75">No shared parents</div>
               </button>
             </div>
-            {siblingType !== 'FULL' && (
-              <p className="text-xs text-amber-600 mt-2 bg-amber-50 p-2 rounded">
-                Note: {siblingType === 'HALF' ? 'Half-sibling' : 'Step-sibling'} relationships will be marked in the relationship notes.
-                Parent relationships should be managed separately.
-              </p>
-            )}
           </div>
+
+          {/* Parent Selection Section - Show based on sibling type */}
+          {siblingType !== 'STEP' && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                Shared Parents
+                {siblingType === 'FULL' && parentPeople.length < 2 && (
+                  <span className="ml-2 text-amber-600 font-normal text-xs">
+                    (Reference person has {parentPeople.length} parent{parentPeople.length !== 1 ? 's' : ''} in tree)
+                  </span>
+                )}
+              </h3>
+
+              {parentPeople.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs text-amber-800">
+                    <strong>Note:</strong> {person.firstName} doesn't have any parents defined in the tree.
+                    The new sibling will be created without parent relationships.
+                    You can add parent relationships later.
+                  </p>
+                </div>
+              ) : siblingType === 'FULL' ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500 mb-2">
+                    Full siblings share both parents. The new sibling will be linked to:
+                  </p>
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                    {parentPeople.map(parent => (
+                      <div key={parent.id} className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-blue-500 flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <span className="text-sm text-gray-700">{parent.firstName} {parent.lastName}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : siblingType === 'HALF' ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500 mb-2">
+                    Half-siblings share exactly one parent. Select the shared parent:
+                  </p>
+                  <div className="space-y-2">
+                    {parentPeople.map(parent => (
+                      <label
+                        key={parent.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                          sharedParent === parent.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="sharedParent"
+                          value={parent.id}
+                          checked={sharedParent === parent.id}
+                          onChange={(e) => {
+                            setSharedParent(e.target.value);
+                            setSelectedParents([e.target.value]);
+                          }}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{parent.firstName} {parent.lastName}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {siblingType === 'STEP' && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <p className="text-xs text-gray-600">
+                <strong>Step-siblings</strong> share no biological parents. They are related through their
+                parents' marriage/partnership. The new sibling will not be linked to {person.firstName}'s parents.
+              </p>
+            </div>
+          )}
+
+          {/* Info about automatic sibling linking */}
+          {existingSiblings.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-800">
+                <strong>Note:</strong> This sibling will also be automatically linked to {person.firstName}'s
+                {existingSiblings.length === 1 ? ' existing sibling' : ` ${existingSiblings.length} existing siblings`}.
+                The relationship type (full/half/step) will be determined based on shared parents.
+              </p>
+            </div>
+          )}
 
           {/* Basic Information */}
           <div>
@@ -3145,6 +3709,128 @@ function AddRelationshipModal({ person, allPeople, treeId, onClose, onSuccess }:
             </Button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Missing Parents Modal - shows people who don't have 2 parents and allows assigning parents
+interface MissingParentsModalProps {
+  treeId: string;
+  onClose: () => void;
+  onSelectPerson: (personId: string) => void;
+}
+
+interface PersonMissingParents {
+  id: string;
+  firstName: string;
+  lastName: string;
+  birthDate?: string | null;
+  parentCount: number;
+  parents: Array<{ id: string; firstName: string; lastName: string }>;
+  missingCount: number;
+}
+
+function MissingParentsModal({ treeId, onClose, onSelectPerson }: MissingParentsModalProps) {
+  const [loading, setLoading] = useState(true);
+  const [peopleMissingParents, setPeopleMissingParents] = useState<PersonMissingParents[]>([]);
+
+  useEffect(() => {
+    fetchMissingParents();
+  }, []);
+
+  const fetchMissingParents = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/family-trees/${treeId}/people-missing-parents`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPeopleMissingParents(data.data.people);
+      }
+    } catch (error) {
+      console.error('Failed to fetch people missing parents:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePersonClick = (personId: string) => {
+    onClose();
+    onSelectPerson(personId);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">People Missing Parents</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {peopleMissingParents.length} {peopleMissingParents.length === 1 ? 'person needs' : 'people need'} parent relationships
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : peopleMissingParents.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>All people have 2 parents assigned!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Click on a person to open their profile and add a parent relationship.
+              </p>
+              {/* List of people missing parents */}
+              <div className="space-y-2">
+                {peopleMissingParents.map((person) => (
+                  <div
+                    key={person.id}
+                    className="p-4 rounded-lg border cursor-pointer transition-colors border-gray-200 hover:border-blue-400 hover:bg-blue-50"
+                    onClick={() => handlePersonClick(person.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-medium">
+                          {person.firstName} {person.lastName}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-sm px-2 py-1 rounded ${
+                          person.parentCount === 0
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                        }`}
+                      >
+                        {person.parentCount === 0 ? 'No parents' : '1 parent'}
+                      </span>
+                    </div>
+                    {person.parents.length > 0 && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        Current parent: {person.parents.map((p) => `${p.firstName} ${p.lastName}`).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-200">
+          <Button variant="outline" onClick={onClose} className="w-full">
+            Close
+          </Button>
+        </div>
       </div>
     </div>
   );

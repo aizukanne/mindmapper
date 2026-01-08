@@ -1,0 +1,17 @@
+{
+  "id": "selection-indicators",
+  "category": "UI",
+  "title": "Node Selection Indicators",
+  "description": "Highlight nodes being edited by other users. Display colored borders and user labels to show who is working on which node.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "awareness-protocol",
+    "custom-node-component"
+  ],
+  "createdAt": "2026-01-07T00:20:10.245Z",
+  "updatedAt": "2026-01-07T08:05:52.720Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:58:37.309Z"
+}

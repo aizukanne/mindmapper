@@ -1,0 +1,16 @@
+{
+  "id": "mobile-sidebar",
+  "category": "Mobile",
+  "title": "Mobile Responsive Sidebar",
+  "description": "Convert sidebar to slide-out drawer on mobile. Add hamburger menu button and gesture to open/close.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "dashboard-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.261Z",
+  "updatedAt": "2026-01-07T06:58:48.907Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:56:46.254Z"
+}

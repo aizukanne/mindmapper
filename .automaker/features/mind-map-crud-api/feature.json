@@ -1,0 +1,18 @@
+{
+  "id": "mind-map-crud-api",
+  "category": "API",
+  "title": "Mind Map CRUD Endpoints",
+  "description": "Create REST endpoints for mind map operations: GET /maps (list), POST /maps (create), GET /maps/:id (read), PUT /maps/:id (update), DELETE /maps/:id (delete).",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "express-api-setup",
+    "initial-migration",
+    "clerk-backend-auth"
+  ],
+  "createdAt": "2026-01-07T00:20:10.238Z",
+  "updatedAt": "2026-01-07T01:16:23.316Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T01:11:02.749Z"
+}

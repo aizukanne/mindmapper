@@ -1,0 +1,17 @@
+{
+  "id": "templates-api",
+  "category": "API",
+  "title": "Templates API Endpoints",
+  "description": "Create endpoints for listing templates, creating from existing map, using template to create map. Support filtering by category.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "templates-schema",
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.254Z",
+  "updatedAt": "2026-01-07T08:47:55.121Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:43:40.254Z"
+}

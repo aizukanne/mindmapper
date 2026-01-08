@@ -1,0 +1,17 @@
+{
+  "id": "comment-thread-component",
+  "category": "UI",
+  "title": "Comment Thread Component",
+  "description": "Create component for displaying comment threads with replies, resolve button, and timestamp formatting. Support nested replies.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "comments-api",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.251Z",
+  "updatedAt": "2026-01-07T04:47:00.055Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T04:43:52.254Z"
+}

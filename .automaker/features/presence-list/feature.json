@@ -1,0 +1,17 @@
+{
+  "id": "presence-list",
+  "category": "UI",
+  "title": "Active Collaborators List",
+  "description": "Display list of currently active users in sidebar. Show avatars, names, and online status with real-time updates.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "awareness-protocol",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.244Z",
+  "updatedAt": "2026-01-07T07:36:42.996Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:29:43.305Z"
+}

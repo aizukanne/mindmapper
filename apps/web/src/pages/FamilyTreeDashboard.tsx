@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Users, Globe, Lock, Loader2, Trash2, MoreHorizontal } from 'lucide-react';
+import { Plus, Users, Globe, Lock, Loader2, Trash2, MoreHorizontal, TreeDeciduous, UserPlus, Heart, Clock, LayoutGrid, List, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { UserMenu } from '@/components/auth/UserMenu';
-import type { FamilyTree, TreePrivacy } from '@mindmapper/types';
+import type { FamilyTree, TreePrivacy, TreeRole } from '@mindmapper/types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -17,7 +18,8 @@ interface FamilyTreeWithDetails extends FamilyTree {
   };
   members: Array<{
     id: string;
-    role: string;
+    role: TreeRole;
+    userId: string;
     user: {
       id: string;
       name: string | null;
@@ -27,7 +29,15 @@ interface FamilyTreeWithDetails extends FamilyTree {
   }>;
   _count?: {
     people: number;
+    relationships?: number;
   };
+}
+
+interface DashboardStats {
+  totalTrees: number;
+  ownedTrees: number;
+  invitedTrees: number;
+  totalPeople: number;
 }
 
 export default function FamilyTreeDashboard() {
@@ -36,11 +46,29 @@ export default function FamilyTreeDashboard() {
   const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Fetch family trees
   useEffect(() => {
     fetchTrees();
+    fetchCurrentUser();
   }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentUserId(data.data?.id || 'dev-user-id');
+      }
+    } catch {
+      // Fallback for development
+      setCurrentUserId('dev-user-id');
+    }
+  };
 
   const fetchTrees = async () => {
     try {
@@ -57,6 +85,33 @@ export default function FamilyTreeDashboard() {
       setLoading(false);
     }
   };
+
+  // Separate trees into owned and invited
+  const { ownedTrees, invitedTrees, stats } = useMemo(() => {
+    const owned: FamilyTreeWithDetails[] = [];
+    const invited: FamilyTreeWithDetails[] = [];
+    let totalPeople = 0;
+
+    trees.forEach((tree) => {
+      totalPeople += tree._count?.people || 0;
+      // Check if user is the creator
+      if (tree.createdBy === currentUserId || tree.createdBy === 'dev-user-id') {
+        owned.push(tree);
+      } else {
+        // User is a member but not the creator
+        invited.push(tree);
+      }
+    });
+
+    const stats: DashboardStats = {
+      totalTrees: trees.length,
+      ownedTrees: owned.length,
+      invitedTrees: invited.length,
+      totalPeople,
+    };
+
+    return { ownedTrees: owned, invitedTrees: invited, stats };
+  }, [trees, currentUserId]);
 
   // Delete a tree
   const handleDelete = async (treeId: string, e: React.MouseEvent) => {
@@ -102,145 +157,265 @@ export default function FamilyTreeDashboard() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-gray-900">Family Trees</h1>
-          <Button
-            onClick={() => navigate('/')}
-            variant="ghost"
-            size="sm"
-          >
-            Back to Mind Maps
-          </Button>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Create Family Tree
-          </Button>
-          <UserMenu />
+      <header className="border-b border-border shrink-0">
+        <div className="px-4 md:px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <TreeDeciduous className="h-6 w-6 text-primary" />
+              <h1 className="text-xl font-bold text-primary">Family Trees</h1>
+            </div>
+            <Button
+              onClick={() => navigate('/')}
+              variant="ghost"
+              size="sm"
+              className="hidden md:flex"
+            >
+              Back to Mind Maps
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 md:gap-3">
+            {/* View mode toggle */}
+            <div className="hidden sm:flex border border-border rounded-lg overflow-hidden">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="icon"
+                className="rounded-none h-9 w-9"
+                onClick={() => setViewMode('grid')}
+                title="Grid view"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="icon"
+                className="rounded-none h-9 w-9"
+                onClick={() => setViewMode('list')}
+                title="List view"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="flex items-center gap-2"
+              data-testid="create-tree-button"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Create Family Tree</span>
+              <span className="sm:hidden">New</span>
+            </Button>
+            <UserMenu />
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-4 md:p-6">
         {loading ? (
           <div className="flex items-center justify-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
         ) : trees.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64">
-            <Users className="w-16 h-16 text-gray-300 mb-4" />
-            <h2 className="text-xl font-semibold text-gray-600 mb-2">No family trees yet</h2>
-            <p className="text-gray-500 mb-6">Create your first family tree to get started</p>
+          <div className="flex flex-col items-center justify-center h-64" data-testid="empty-state">
+            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <TreeDeciduous className="w-10 h-10 text-primary" />
+            </div>
+            <h2 className="text-xl font-semibold text-foreground mb-2">No family trees yet</h2>
+            <p className="text-muted-foreground mb-6 text-center max-w-md">
+              Create your first family tree to start documenting your family history
+            </p>
             <Button
               onClick={() => setIsCreateModalOpen(true)}
               className="flex items-center gap-2"
+              size="lg"
+              data-testid="empty-create-tree-button"
             >
-              <Plus className="w-4 h-4" />
-              Create Family Tree
+              <Plus className="w-5 h-5" />
+              Create Your First Family Tree
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {trees.map((tree) => (
-              <div
-                key={tree.id}
-                onClick={() => navigate(`/family-tree/${tree.id}`)}
-                className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden group"
-              >
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-1">
-                        {tree.name}
-                      </h3>
-                      {tree.description && (
-                        <p className="text-sm text-gray-600 line-clamp-2">{tree.description}</p>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => e.stopPropagation()}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
+          <div className="space-y-8">
+            {/* Quick Stats Section */}
+            <section data-testid="stats-section">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Heart className="h-5 w-5 text-primary" />
+                Overview
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2">
+                      <TreeDeciduous className="h-4 w-4" />
+                      Total Trees
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-primary" data-testid="stat-total-trees">{stats.totalTrees}</div>
+                  </CardContent>
+                </Card>
 
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      {getPrivacyIcon(tree.privacy)}
-                      <span>{getPrivacyLabel(tree.privacy)}</span>
-                    </div>
+                <Card className="hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Total People
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-green-600" data-testid="stat-total-people">{stats.totalPeople}</div>
+                  </CardContent>
+                </Card>
 
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Users className="w-4 h-4" />
-                      <span>{tree._count?.people ?? 0} people</span>
-                    </div>
+                <Card className="hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      Your Trees
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-blue-600" data-testid="stat-owned-trees">{stats.ownedTrees}</div>
+                  </CardContent>
+                </Card>
 
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <span className="text-xs">
-                        Updated {formatDistanceToNow(new Date(tree.updatedAt), { addSuffix: true })}
-                      </span>
-                    </div>
-
-                    {tree.members.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <div className="flex -space-x-2">
-                          {tree.members.slice(0, 3).map((member) => (
-                            <div
-                              key={member.id}
-                              className="w-6 h-6 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-700"
-                              title={member.user.name || member.user.email}
-                            >
-                              {(member.user.name || member.user.email).charAt(0).toUpperCase()}
-                            </div>
-                          ))}
-                          {tree.members.length > 3 && (
-                            <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-600">
-                              +{tree.members.length - 3}
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          {tree.members.length} member{tree.members.length !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-100 px-6 py-3 bg-gray-50 flex items-center justify-between">
-                  <span className="text-xs text-gray-500">
-                    Created by {tree.creator.name || tree.creator.email}
-                  </span>
-                  {tree.createdBy === 'dev-user-id' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => handleDelete(tree.id, e)}
-                      disabled={deletingId === tree.id}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      {deletingId === tree.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
-                  )}
-                </div>
+                <Card className="hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2">
+                      <UserPlus className="h-4 w-4" />
+                      Invited Trees
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-purple-600" data-testid="stat-invited-trees">{stats.invitedTrees}</div>
+                  </CardContent>
+                </Card>
               </div>
-            ))}
+            </section>
+
+            {/* Quick Actions */}
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="quick-actions">
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="flex items-center gap-4 p-4 border border-border rounded-lg hover:bg-accent transition-colors text-left"
+                data-testid="quick-create-button"
+              >
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Plus className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-medium">Create New Tree</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Start documenting your family
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {/* Could link to an invite flow */}}
+                className="flex items-center gap-4 p-4 border border-border rounded-lg hover:bg-accent transition-colors text-left"
+              >
+                <div className="h-12 w-12 rounded-full bg-purple-500/10 flex items-center justify-center">
+                  <UserPlus className="h-6 w-6 text-purple-500" />
+                </div>
+                <div>
+                  <h3 className="font-medium">Join a Tree</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Accept an invitation from family
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => ownedTrees[0] && navigate(`/family-tree/${ownedTrees[0].id}`)}
+                disabled={ownedTrees.length === 0}
+                className="flex items-center gap-4 p-4 border border-border rounded-lg hover:bg-accent transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="h-12 w-12 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <ChevronRight className="h-6 w-6 text-green-500" />
+                </div>
+                <div>
+                  <h3 className="font-medium">Continue Working</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {ownedTrees[0]?.name || 'Open your latest tree'}
+                  </p>
+                </div>
+              </button>
+            </section>
+
+            {/* Your Trees Section */}
+            {ownedTrees.length > 0 && (
+              <section data-testid="owned-trees-section">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <TreeDeciduous className="h-5 w-5 text-primary" />
+                    Your Family Trees
+                  </h2>
+                  <span className="text-sm text-muted-foreground">
+                    {ownedTrees.length} tree{ownedTrees.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div
+                  className={viewMode === 'grid'
+                    ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                    : "flex flex-col gap-3"
+                  }
+                  data-testid="owned-trees-grid"
+                >
+                  {ownedTrees.map((tree) => (
+                    <TreeCard
+                      key={tree.id}
+                      tree={tree}
+                      viewMode={viewMode}
+                      onClick={() => navigate(`/family-tree/${tree.id}`)}
+                      onDelete={(e) => handleDelete(tree.id, e)}
+                      isDeleting={deletingId === tree.id}
+                      isOwner={true}
+                      getPrivacyIcon={getPrivacyIcon}
+                      getPrivacyLabel={getPrivacyLabel}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Invited Trees Section */}
+            {invitedTrees.length > 0 && (
+              <section data-testid="invited-trees-section">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <UserPlus className="h-5 w-5 text-purple-500" />
+                    Shared With You
+                  </h2>
+                  <span className="text-sm text-muted-foreground">
+                    {invitedTrees.length} tree{invitedTrees.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div
+                  className={viewMode === 'grid'
+                    ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                    : "flex flex-col gap-3"
+                  }
+                  data-testid="invited-trees-grid"
+                >
+                  {invitedTrees.map((tree) => (
+                    <TreeCard
+                      key={tree.id}
+                      tree={tree}
+                      viewMode={viewMode}
+                      onClick={() => navigate(`/family-tree/${tree.id}`)}
+                      onDelete={(e) => handleDelete(tree.id, e)}
+                      isDeleting={deletingId === tree.id}
+                      isOwner={false}
+                      getPrivacyIcon={getPrivacyIcon}
+                      getPrivacyLabel={getPrivacyLabel}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </main>
@@ -420,6 +595,274 @@ function CreateTreeModal({ onClose, onSuccess }: CreateTreeModalProps) {
             </Button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Tree Card Component
+interface TreeCardProps {
+  tree: FamilyTreeWithDetails;
+  viewMode: 'grid' | 'list';
+  onClick: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+  isDeleting: boolean;
+  isOwner: boolean;
+  getPrivacyIcon: (privacy: TreePrivacy) => React.ReactNode;
+  getPrivacyLabel: (privacy: TreePrivacy) => string;
+}
+
+function TreeCard({
+  tree,
+  viewMode,
+  onClick,
+  onDelete,
+  isDeleting,
+  isOwner,
+  getPrivacyIcon,
+  getPrivacyLabel,
+}: TreeCardProps) {
+  const [showMenu, setShowMenu] = useState(false);
+
+  // Find user's role in the tree
+  const getUserRole = () => {
+    if (isOwner) return 'Owner';
+    const member = tree.members.find((m) => m.role);
+    return member?.role === 'ADMIN' ? 'Admin' : member?.role === 'MEMBER' ? 'Member' : 'Viewer';
+  };
+
+  // List view layout
+  if (viewMode === 'list') {
+    return (
+      <div
+        onClick={onClick}
+        className="group relative flex items-center gap-4 border border-border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all cursor-pointer bg-card"
+        data-testid="tree-card-list"
+      >
+        {/* Tree Icon */}
+        <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <TreeDeciduous className="h-6 w-6 text-primary" />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-medium truncate">{tree.name}</h3>
+            {!isOwner && (
+              <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">
+                {getUserRole()}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              {getPrivacyIcon(tree.privacy)}
+              {getPrivacyLabel(tree.privacy)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Users className="h-3 w-3" />
+              {tree._count?.people ?? 0} people
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {formatDistanceToNow(new Date(tree.updatedAt), { addSuffix: true })}
+            </span>
+          </div>
+        </div>
+
+        {/* Members avatars */}
+        {tree.members.length > 0 && (
+          <div className="flex -space-x-2 mr-2">
+            {tree.members.slice(0, 3).map((member) => (
+              <div
+                key={member.id}
+                className="w-7 h-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium"
+                title={member.user.name || member.user.email}
+              >
+                {(member.user.name || member.user.email).charAt(0).toUpperCase()}
+              </div>
+            ))}
+            {tree.members.length > 3 && (
+              <div className="w-7 h-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium">
+                +{tree.members.length - 3}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        {isOwner && (
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(!showMenu);
+              }}
+              className="p-2 rounded-md hover:bg-muted"
+            >
+              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+            </button>
+            {showMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                  }}
+                />
+                <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded-md shadow-lg z-50 py-1 min-w-[140px]">
+                  <button
+                    onClick={(e) => {
+                      setShowMenu(false);
+                      onDelete(e);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600 flex items-center gap-2"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
+                    Delete Tree
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Grid view layout (default)
+  return (
+    <div
+      onClick={onClick}
+      className="group relative border border-border rounded-lg overflow-hidden hover:border-primary hover:shadow-md transition-all cursor-pointer bg-card"
+      data-testid="tree-card-grid"
+    >
+      {/* Card Header with gradient */}
+      <div className="h-24 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent relative">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <TreeDeciduous className="h-12 w-12 text-primary/40" />
+        </div>
+
+        {/* Privacy badge */}
+        <div className="absolute top-3 left-3">
+          <span className="px-2 py-1 rounded-full bg-background/80 backdrop-blur-sm text-xs font-medium flex items-center gap-1">
+            {getPrivacyIcon(tree.privacy)}
+            {getPrivacyLabel(tree.privacy)}
+          </span>
+        </div>
+
+        {/* Role badge for invited trees */}
+        {!isOwner && (
+          <div className="absolute top-3 right-3">
+            <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-medium">
+              {getUserRole()}
+            </span>
+          </div>
+        )}
+
+        {/* Menu button for owned trees */}
+        {isOwner && (
+          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(!showMenu);
+              }}
+              className="p-1.5 rounded-md bg-background/80 hover:bg-background border border-border"
+            >
+              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+            </button>
+            {showMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                  }}
+                />
+                <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded-md shadow-lg z-50 py-1 min-w-[140px]">
+                  <button
+                    onClick={(e) => {
+                      setShowMenu(false);
+                      onDelete(e);
+                    }}
+                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted text-red-600 flex items-center gap-2"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
+                    Delete Tree
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Card Content */}
+      <div className="p-4">
+        <h3 className="font-semibold text-lg mb-1 line-clamp-1">{tree.name}</h3>
+        {tree.description && (
+          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{tree.description}</p>
+        )}
+
+        {/* Stats row */}
+        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
+          <span className="flex items-center gap-1">
+            <Users className="h-4 w-4" />
+            {tree._count?.people ?? 0} people
+          </span>
+          {tree.members.length > 0 && (
+            <span className="flex items-center gap-1">
+              <UserPlus className="h-4 w-4" />
+              {tree.members.length} member{tree.members.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        {/* Members avatars */}
+        {tree.members.length > 0 && (
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex -space-x-2">
+              {tree.members.slice(0, 4).map((member) => (
+                <div
+                  key={member.id}
+                  className="w-7 h-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium"
+                  title={member.user.name || member.user.email}
+                >
+                  {(member.user.name || member.user.email).charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {tree.members.length > 4 && (
+                <div className="w-7 h-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium text-muted-foreground">
+                  +{tree.members.length - 4}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-3 border-t border-border">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Updated {formatDistanceToNow(new Date(tree.updatedAt), { addSuffix: true })}
+          </span>
+          {!isOwner && (
+            <span className="text-xs text-muted-foreground">
+              by {tree.creator.name || tree.creator.email?.split('@')[0]}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

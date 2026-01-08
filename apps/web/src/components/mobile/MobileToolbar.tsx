@@ -6,13 +6,26 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  ChevronUp,
+  MoreHorizontal,
   Palette,
   Type,
   Undo2,
   Redo2,
+  Layout,
+  Download,
+  Users,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  BottomSheet,
+  BottomSheetContent,
+  BottomSheetHeader,
+  BottomSheetTitle,
+  BottomSheetSection,
+  BottomSheetAction,
+  BottomSheetClose,
+} from '@/components/ui/bottom-sheet';
 import { cn } from '@/lib/utils';
 import { useMapStore } from '@/stores/mapStore';
 
@@ -25,6 +38,9 @@ interface MobileToolbarProps {
   canUndo?: boolean;
   canRedo?: boolean;
   onStyleClick?: () => void;
+  onExport?: () => void;
+  onLayout?: () => void;
+  onCollaborate?: () => void;
 }
 
 export function MobileToolbar({
@@ -36,8 +52,11 @@ export function MobileToolbar({
   canUndo,
   canRedo,
   onStyleClick,
+  onExport,
+  onLayout,
+  onCollaborate,
 }: MobileToolbarProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const { selectedNodeId, addNode, deleteNode, duplicateNode, nodes } = useMapStore();
 
   const selectedNode = selectedNodeId
@@ -73,185 +92,255 @@ export function MobileToolbar({
   const handleDuplicate = () => {
     if (selectedNodeId && canDuplicate) {
       duplicateNode(selectedNodeId);
+      setIsBottomSheetOpen(false);
+    }
+  };
+
+  const handleActionWithClose = (action: (() => void) | undefined) => {
+    if (action) {
+      action();
+      setIsBottomSheetOpen(false);
     }
   };
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
-      {/* Expanded toolbar */}
-      <div
-        className={cn(
-          'bg-background border-t border-border shadow-lg transition-all duration-300 ease-in-out overflow-hidden',
-          isExpanded ? 'max-h-64' : 'max-h-0'
-        )}
-      >
-        <div className="p-4 space-y-4">
-          {/* Node actions */}
-          <div>
-            <h4 className="text-xs font-medium text-muted-foreground mb-2">
-              Node Actions
-            </h4>
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddChild}
-                disabled={!selectedNodeId}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Child
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddSibling}
-                disabled={!selectedNode?.data.parentId}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Sibling
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDuplicate}
-                disabled={!canDuplicate}
-              >
-                <Copy className="h-4 w-4 mr-1" />
-                Duplicate
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDelete}
-                disabled={!canDelete}
-                className="text-red-600 hover:text-red-700"
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Delete
-              </Button>
-            </div>
-          </div>
-
-          {/* Style actions */}
-          {selectedNodeId && onStyleClick && (
-            <div>
-              <h4 className="text-xs font-medium text-muted-foreground mb-2">
-                Styling
-              </h4>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={onStyleClick}>
-                  <Palette className="h-4 w-4 mr-1" />
-                  Colors
-                </Button>
-                <Button variant="outline" size="sm" onClick={onStyleClick}>
-                  <Type className="h-4 w-4 mr-1" />
-                  Text
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* History actions */}
-          <div>
-            <h4 className="text-xs font-medium text-muted-foreground mb-2">
-              History
-            </h4>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onUndo}
-                disabled={!canUndo}
-              >
-                <Undo2 className="h-4 w-4 mr-1" />
-                Undo
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onRedo}
-                disabled={!canRedo}
-              >
-                <Redo2 className="h-4 w-4 mr-1" />
-                Redo
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50"
+      data-testid="mobile-toolbar"
+    >
       {/* Main toolbar */}
-      <div className="bg-background border-t border-border px-4 py-2 safe-area-inset-bottom">
-        <div className="flex items-center justify-between">
-          {/* Left: Quick actions */}
-          <div className="flex items-center gap-1">
+      <div className="bg-background/95 backdrop-blur-sm border-t border-border px-2 py-2 safe-area-inset-bottom">
+        <div className="flex items-center justify-between max-w-md mx-auto">
+          {/* Left: Quick node actions */}
+          <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon"
               onClick={handleAddChild}
               disabled={!selectedNodeId}
-              className="h-10 w-10"
+              className="h-11 w-11 rounded-xl"
+              data-testid="mobile-toolbar-add"
             >
               <Plus className="h-5 w-5" />
+              <span className="sr-only">Add child node</span>
             </Button>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleDelete}
               disabled={!canDelete}
-              className="h-10 w-10 text-red-600"
+              className={cn(
+                'h-11 w-11 rounded-xl',
+                canDelete && 'text-destructive hover:text-destructive'
+              )}
+              data-testid="mobile-toolbar-delete"
             >
               <Trash2 className="h-5 w-5" />
+              <span className="sr-only">Delete node</span>
             </Button>
           </div>
 
-          {/* Center: Expand button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="h-10"
-          >
-            <ChevronUp
-              className={cn(
-                'h-5 w-5 transition-transform',
-                isExpanded && 'rotate-180'
-              )}
-            />
-            <span className="ml-1 text-sm">
-              {isExpanded ? 'Less' : 'More'}
-            </span>
-          </Button>
-
-          {/* Right: View controls */}
-          <div className="flex items-center gap-1">
+          {/* Center: Zoom controls */}
+          <div className="flex items-center gap-0.5 bg-muted rounded-xl p-0.5">
             <Button
               variant="ghost"
               size="icon"
               onClick={onZoomOut}
-              className="h-10 w-10"
+              className="h-10 w-10 rounded-lg"
+              data-testid="mobile-toolbar-zoom-out"
             >
               <ZoomOut className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onZoomIn}
-              className="h-10 w-10"
-            >
-              <ZoomIn className="h-5 w-5" />
+              <span className="sr-only">Zoom out</span>
             </Button>
             <Button
               variant="ghost"
               size="icon"
               onClick={onFitView}
-              className="h-10 w-10"
+              className="h-10 w-10 rounded-lg"
+              data-testid="mobile-toolbar-fit-view"
             >
               <Maximize2 className="h-5 w-5" />
+              <span className="sr-only">Fit view</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onZoomIn}
+              className="h-10 w-10 rounded-lg"
+              data-testid="mobile-toolbar-zoom-in"
+            >
+              <ZoomIn className="h-5 w-5" />
+              <span className="sr-only">Zoom in</span>
+            </Button>
+          </div>
+
+          {/* Right: More options (triggers bottom sheet) */}
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onUndo}
+              disabled={!canUndo}
+              className="h-11 w-11 rounded-xl"
+              data-testid="mobile-toolbar-undo"
+            >
+              <Undo2 className="h-5 w-5" />
+              <span className="sr-only">Undo</span>
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setIsBottomSheetOpen(true)}
+              className="h-11 w-11 rounded-xl"
+              data-testid="mobile-toolbar-more"
+            >
+              <MoreHorizontal className="h-5 w-5" />
+              <span className="sr-only">More options</span>
             </Button>
           </div>
         </div>
       </div>
+
+      {/* Bottom Sheet for additional options */}
+      <BottomSheet open={isBottomSheetOpen} onOpenChange={setIsBottomSheetOpen}>
+        <BottomSheetContent
+          size="md"
+          data-testid="mobile-toolbar-bottom-sheet"
+          aria-describedby="bottom-sheet-description"
+        >
+          <BottomSheetHeader>
+            <div className="flex items-center justify-between">
+              <BottomSheetTitle>Actions</BottomSheetTitle>
+              <BottomSheetClose asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  data-testid="mobile-toolbar-close-sheet"
+                >
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </BottomSheetClose>
+            </div>
+            <p id="bottom-sheet-description" className="text-sm text-muted-foreground">
+              Additional actions and options for your mind map
+            </p>
+          </BottomSheetHeader>
+
+          {/* Node Actions Section */}
+          {selectedNodeId && (
+            <BottomSheetSection title="Node Actions">
+              <div className="grid grid-cols-2 gap-2">
+                <BottomSheetAction
+                  icon={<Plus className="h-5 w-5" />}
+                  label="Add Child"
+                  description="Create a child node"
+                  onClick={handleAddChild}
+                  disabled={!selectedNodeId}
+                  data-testid="mobile-sheet-add-child"
+                />
+                <BottomSheetAction
+                  icon={<Plus className="h-5 w-5" />}
+                  label="Add Sibling"
+                  description="Create a sibling node"
+                  onClick={handleAddSibling}
+                  disabled={!selectedNode?.data.parentId}
+                  data-testid="mobile-sheet-add-sibling"
+                />
+                <BottomSheetAction
+                  icon={<Copy className="h-5 w-5" />}
+                  label="Duplicate"
+                  description="Copy this node"
+                  onClick={handleDuplicate}
+                  disabled={!canDuplicate}
+                  data-testid="mobile-sheet-duplicate"
+                />
+                <BottomSheetAction
+                  icon={<Trash2 className="h-5 w-5" />}
+                  label="Delete"
+                  description="Remove this node"
+                  onClick={handleDelete}
+                  disabled={!canDelete}
+                  destructive
+                  data-testid="mobile-sheet-delete"
+                />
+              </div>
+            </BottomSheetSection>
+          )}
+
+          {/* Styling Section */}
+          {selectedNodeId && onStyleClick && (
+            <BottomSheetSection title="Styling">
+              <div className="grid grid-cols-2 gap-2">
+                <BottomSheetAction
+                  icon={<Palette className="h-5 w-5" />}
+                  label="Colors"
+                  description="Change node colors"
+                  onClick={() => handleActionWithClose(onStyleClick)}
+                  data-testid="mobile-sheet-colors"
+                />
+                <BottomSheetAction
+                  icon={<Type className="h-5 w-5" />}
+                  label="Text Style"
+                  description="Format text"
+                  onClick={() => handleActionWithClose(onStyleClick)}
+                  data-testid="mobile-sheet-text"
+                />
+              </div>
+            </BottomSheetSection>
+          )}
+
+          {/* Tools Section */}
+          <BottomSheetSection title="Tools">
+            <div className="grid grid-cols-2 gap-2">
+              <BottomSheetAction
+                icon={<Undo2 className="h-5 w-5" />}
+                label="Undo"
+                description="Undo last action"
+                onClick={() => handleActionWithClose(onUndo)}
+                disabled={!canUndo}
+                data-testid="mobile-sheet-undo"
+              />
+              <BottomSheetAction
+                icon={<Redo2 className="h-5 w-5" />}
+                label="Redo"
+                description="Redo last action"
+                onClick={() => handleActionWithClose(onRedo)}
+                disabled={!canRedo}
+                data-testid="mobile-sheet-redo"
+              />
+              {onLayout && (
+                <BottomSheetAction
+                  icon={<Layout className="h-5 w-5" />}
+                  label="Auto Layout"
+                  description="Organize nodes"
+                  onClick={() => handleActionWithClose(onLayout)}
+                  data-testid="mobile-sheet-layout"
+                />
+              )}
+              {onExport && (
+                <BottomSheetAction
+                  icon={<Download className="h-5 w-5" />}
+                  label="Export"
+                  description="Save as image"
+                  onClick={() => handleActionWithClose(onExport)}
+                  data-testid="mobile-sheet-export"
+                />
+              )}
+              {onCollaborate && (
+                <BottomSheetAction
+                  icon={<Users className="h-5 w-5" />}
+                  label="Collaborate"
+                  description="Share with others"
+                  onClick={() => handleActionWithClose(onCollaborate)}
+                  data-testid="mobile-sheet-collaborate"
+                />
+              )}
+            </div>
+          </BottomSheetSection>
+        </BottomSheetContent>
+      </BottomSheet>
     </div>
   );
 }

@@ -17,6 +17,12 @@ import {
   Check,
   AlertCircle,
   X,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Network,
+  MessageSquare,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +36,25 @@ interface ImportModalProps {
 interface DetectedFormat {
   format: string;
   confidence: number;
-  details: Record<string, unknown>;
+  details: {
+    nodeCount?: number;
+    connectionCount?: number;
+    commentCount?: number;
+    maxDepth?: number;
+    hasConnections?: boolean;
+    version?: string;
+    formatVersion?: string;
+    title?: string;
+    hasWarnings?: boolean;
+    hasErrors?: boolean;
+    sampleNodes?: Array<{
+      text: string;
+      type?: string;
+      depth?: number;
+      childCount?: number;
+    }>;
+    [key: string]: unknown;
+  };
   supported: boolean;
 }
 
@@ -63,6 +87,7 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
+  const [showPreviewNodes, setShowPreviewNodes] = useState(false);
 
   const resetState = useCallback(() => {
     setSelectedFile(null);
@@ -70,6 +95,7 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
     setDetectedFormat(null);
     setError(null);
     setImportSuccess(false);
+    setShowPreviewNodes(false);
   }, []);
 
   const detectFormat = useCallback(async (data: string | object) => {
@@ -216,6 +242,7 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onClick={() => fileInputRef.current?.click()}
+              data-testid="file-drop-zone"
               className={cn(
                 'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
                 isDragging
@@ -236,6 +263,7 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
                 accept=".json,.mm,.txt,.xml"
                 onChange={handleFileSelect}
                 className="hidden"
+                data-testid="file-input"
               />
             </div>
           ) : (
@@ -275,38 +303,137 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
               )}
 
               {detectedFormat && !isDetecting && (
-                <div className="p-4 border rounded-lg">
-                  <div className="flex items-center gap-3 mb-3">
-                    {formatIcons[detectedFormat.format] || formatIcons['unknown']}
-                    <div>
-                      <p className="font-medium">
-                        {formatNames[detectedFormat.format] || detectedFormat.format}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Confidence: {Math.round(detectedFormat.confidence * 100)}%
-                      </p>
+                <div className="p-4 border rounded-lg space-y-4" data-testid="format-detection-result">
+                  {/* Format header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {formatIcons[detectedFormat.format] || formatIcons['unknown']}
+                      <div>
+                        <p className="font-medium">
+                          {formatNames[detectedFormat.format] || detectedFormat.format}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Confidence: {Math.round(detectedFormat.confidence * 100)}%
+                          {detectedFormat.details.formatVersion && ` • v${detectedFormat.details.formatVersion}`}
+                        </p>
+                      </div>
                     </div>
+                    {detectedFormat.supported && (
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                        Supported
+                      </span>
+                    )}
                   </div>
 
-                  {/* Format details */}
-                  {detectedFormat.details && Object.keys(detectedFormat.details).length > 0 && (
-                    <div className="text-xs text-muted-foreground space-y-1 mb-3">
+                  {/* Import statistics */}
+                  {detectedFormat.details && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-muted/50 rounded-lg" data-testid="import-statistics">
                       {detectedFormat.details.nodeCount !== undefined && (
-                        <p>Nodes: {String(detectedFormat.details.nodeCount)}</p>
+                        <div className="flex items-center gap-2">
+                          <Layers className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{detectedFormat.details.nodeCount}</p>
+                            <p className="text-xs text-muted-foreground">Nodes</p>
+                          </div>
+                        </div>
                       )}
-                      {detectedFormat.details.hasConnections !== undefined && (
-                        <p>Has connections: {detectedFormat.details.hasConnections ? 'Yes' : 'No'}</p>
+                      {detectedFormat.details.connectionCount !== undefined && detectedFormat.details.connectionCount > 0 && (
+                        <div className="flex items-center gap-2">
+                          <Network className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{detectedFormat.details.connectionCount}</p>
+                            <p className="text-xs text-muted-foreground">Connections</p>
+                          </div>
+                        </div>
                       )}
-                      {detectedFormat.details.version !== undefined && (
-                        <p>Version: {String(detectedFormat.details.version)}</p>
+                      {detectedFormat.details.commentCount !== undefined && detectedFormat.details.commentCount > 0 && (
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{detectedFormat.details.commentCount}</p>
+                            <p className="text-xs text-muted-foreground">Comments</p>
+                          </div>
+                        </div>
+                      )}
+                      {detectedFormat.details.maxDepth !== undefined && (
+                        <div className="flex items-center gap-2">
+                          <Layers className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{detectedFormat.details.maxDepth}</p>
+                            <p className="text-xs text-muted-foreground">Max Depth</p>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
 
+                  {/* Title preview */}
+                  {detectedFormat.details.title && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Title: </span>
+                      <span className="font-medium">{detectedFormat.details.title}</span>
+                    </div>
+                  )}
+
+                  {/* Sample nodes preview */}
+                  {detectedFormat.details.sampleNodes && detectedFormat.details.sampleNodes.length > 0 && (
+                    <div className="border-t pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowPreviewNodes(!showPreviewNodes)}
+                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+                        data-testid="toggle-preview-nodes"
+                      >
+                        {showPreviewNodes ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                        <span>Preview nodes ({detectedFormat.details.sampleNodes.length} shown)</span>
+                      </button>
+
+                      {showPreviewNodes && (
+                        <div className="mt-2 space-y-1 max-h-40 overflow-y-auto" data-testid="preview-nodes-list">
+                          {detectedFormat.details.sampleNodes.map((node, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center gap-2 text-xs p-2 bg-muted/30 rounded"
+                              style={{ marginLeft: `${(node.depth || 0) * 12}px` }}
+                            >
+                              <span className={cn(
+                                'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                                node.type === 'ROOT'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-gray-100 text-gray-600'
+                              )}>
+                                {node.type || 'NODE'}
+                              </span>
+                              <span className="truncate flex-1">{node.text}</span>
+                              {node.childCount !== undefined && node.childCount > 0 && (
+                                <span className="text-muted-foreground">
+                                  +{node.childCount}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Warnings */}
+                  {detectedFormat.details.hasWarnings && (
+                    <div className="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-yellow-700 text-xs">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>Some data may not be imported correctly. Review after import.</span>
+                    </div>
+                  )}
+
+                  {/* Unsupported format warning */}
                   {!detectedFormat.supported && (
-                    <div className="flex items-center gap-2 text-yellow-600 text-sm">
-                      <AlertCircle className="h-4 w-4" />
-                      <span>This format may not import correctly</span>
+                    <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>This format is not supported for import</span>
                     </div>
                   )}
                 </div>
@@ -314,7 +441,7 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
 
               {/* Error */}
               {error && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm" data-testid="import-error">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -322,7 +449,7 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
 
               {/* Success */}
               {importSuccess && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm" data-testid="import-success">
                   <Check className="h-4 w-4 shrink-0" />
                   <span>Import successful! Redirecting...</span>
                 </div>
@@ -338,6 +465,7 @@ export function ImportModal({ open, onOpenChange, folderId, onImportSuccess }: I
           <Button
             onClick={handleImport}
             disabled={!selectedFile || !detectedFormat?.supported || isImporting || importSuccess}
+            data-testid="import-button"
           >
             {isImporting ? (
               <>

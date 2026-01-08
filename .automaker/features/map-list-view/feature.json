@@ -1,0 +1,17 @@
+{
+  "id": "map-list-view",
+  "category": "UI",
+  "title": "Mind Map List and Grid View",
+  "description": "Display user's mind maps in grid or list view with thumbnails, titles, last modified dates. Support view switching and sorting.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "dashboard-page",
+    "api-client"
+  ],
+  "createdAt": "2026-01-07T00:20:10.245Z",
+  "updatedAt": "2026-01-07T03:24:57.271Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:22:31.254Z"
+}

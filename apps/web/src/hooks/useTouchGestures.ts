@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useReactFlow } from '@xyflow/react';
 
 interface TouchPoint {
@@ -6,18 +6,63 @@ interface TouchPoint {
   y: number;
 }
 
-interface UseTouchGesturesOptions {
-  enabled?: boolean;
+export interface LongPressContext {
+  x: number;
+  y: number;
+  target: HTMLElement | null;
+  nodeId: string | null;
 }
 
-export function useTouchGestures(options: UseTouchGesturesOptions = {}) {
-  const { enabled = true } = options;
+interface UseTouchGesturesOptions {
+  enabled?: boolean;
+  onLongPress?: (context: LongPressContext) => void;
+  longPressDelay?: number;
+  longPressMoveThreshold?: number;
+}
+
+export interface UseTouchGesturesResult {
+  isLongPressing: boolean;
+  longPressPosition: TouchPoint | null;
+}
+
+export function useTouchGestures(options: UseTouchGesturesOptions = {}): UseTouchGesturesResult {
+  const {
+    enabled = true,
+    onLongPress,
+    longPressDelay = 500,
+    longPressMoveThreshold = 10,
+  } = options;
   const { setViewport, getViewport } = useReactFlow();
 
   const lastTouchesRef = useRef<TouchPoint[]>([]);
   const initialDistanceRef = useRef<number>(0);
   const initialZoomRef = useRef<number>(1);
   const lastPanRef = useRef<TouchPoint>({ x: 0, y: 0 });
+
+  // Long press state
+  const [isLongPressing, setIsLongPressing] = useState(false);
+  const [longPressPosition, setLongPressPosition] = useState<TouchPoint | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef<TouchPoint | null>(null);
+  const longPressTargetRef = useRef<HTMLElement | null>(null);
+
+  // Clear long press timer
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  // Find closest node element from touch target
+  const findNodeFromTarget = useCallback((target: HTMLElement | null): string | null => {
+    if (!target) return null;
+    const nodeElement = target.closest('[data-id]');
+    if (nodeElement) {
+      return nodeElement.getAttribute('data-id');
+    }
+    return null;
+  }, []);
 
   const getDistance = useCallback((touches: TouchPoint[]) => {
     if (touches.length < 2) return 0;
@@ -47,15 +92,36 @@ export function useTouchGestures(options: UseTouchGesturesOptions = {}) {
       lastTouchesRef.current = touches;
 
       if (touches.length === 2) {
-        // Start pinch-to-zoom
+        // Start pinch-to-zoom - cancel any long press
+        clearLongPressTimer();
+        setIsLongPressing(false);
         initialDistanceRef.current = getDistance(touches);
         initialZoomRef.current = getViewport().zoom;
         lastPanRef.current = getCenter(touches);
       } else if (touches.length === 1) {
         lastPanRef.current = touches[0];
+
+        // Start long press detection for single touch
+        if (onLongPress) {
+          const touch = e.touches[0];
+          longPressStartRef.current = { x: touch.clientX, y: touch.clientY };
+          longPressTargetRef.current = e.target as HTMLElement;
+
+          longPressTimerRef.current = setTimeout(() => {
+            setIsLongPressing(true);
+            setLongPressPosition({ x: touch.clientX, y: touch.clientY });
+            const nodeId = findNodeFromTarget(longPressTargetRef.current);
+            onLongPress({
+              x: touch.clientX,
+              y: touch.clientY,
+              target: longPressTargetRef.current,
+              nodeId,
+            });
+          }, longPressDelay);
+        }
       }
     },
-    [enabled, getDistance, getCenter, getViewport]
+    [enabled, getDistance, getCenter, getViewport, onLongPress, longPressDelay, clearLongPressTimer, findNodeFromTarget]
   );
 
   const handleTouchMove = useCallback(
@@ -67,9 +133,20 @@ export function useTouchGestures(options: UseTouchGesturesOptions = {}) {
         y: t.clientY,
       }));
 
+      // Cancel long press if moved beyond threshold
+      if (touches.length === 1 && longPressStartRef.current && longPressTimerRef.current) {
+        const dx = touches[0].x - longPressStartRef.current.x;
+        const dy = touches[0].y - longPressStartRef.current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance > longPressMoveThreshold) {
+          clearLongPressTimer();
+        }
+      }
+
       if (touches.length === 2 && initialDistanceRef.current > 0) {
         // Pinch-to-zoom
         e.preventDefault();
+        clearLongPressTimer();
 
         const currentDistance = getDistance(touches);
         const scale = currentDistance / initialDistanceRef.current;
@@ -94,6 +171,7 @@ export function useTouchGestures(options: UseTouchGesturesOptions = {}) {
         lastPanRef.current = currentCenter;
       } else if (touches.length === 2 && lastTouchesRef.current.length === 2) {
         // Two-finger pan (without pinch)
+        clearLongPressTimer();
         const currentCenter = getCenter(touches);
         const viewport = getViewport();
 
@@ -111,12 +189,23 @@ export function useTouchGestures(options: UseTouchGesturesOptions = {}) {
 
       lastTouchesRef.current = touches;
     },
-    [enabled, getDistance, getCenter, getViewport, setViewport]
+    [enabled, getDistance, getCenter, getViewport, setViewport, longPressMoveThreshold, clearLongPressTimer]
   );
 
   const handleTouchEnd = useCallback(
     (e: TouchEvent) => {
       if (!enabled) return;
+
+      // Clear long press timer on touch end
+      clearLongPressTimer();
+      longPressStartRef.current = null;
+      longPressTargetRef.current = null;
+
+      // Reset long press state after a short delay (allows context menu to appear)
+      setTimeout(() => {
+        setIsLongPressing(false);
+        setLongPressPosition(null);
+      }, 100);
 
       const touches: TouchPoint[] = Array.from(e.touches).map((t) => ({
         x: t.clientX,
@@ -133,7 +222,7 @@ export function useTouchGestures(options: UseTouchGesturesOptions = {}) {
 
       lastTouchesRef.current = touches;
     },
-    [enabled]
+    [enabled, clearLongPressTimer]
   );
 
   useEffect(() => {
@@ -182,4 +271,16 @@ export function useTouchGestures(options: UseTouchGesturesOptions = {}) {
       document.removeEventListener('touchstart', handleDoubleTap);
     };
   }, [enabled, handleDoubleTap]);
+
+  // Cleanup long press timer on unmount
+  useEffect(() => {
+    return () => {
+      clearLongPressTimer();
+    };
+  }, [clearLongPressTimer]);
+
+  return {
+    isLongPressing,
+    longPressPosition,
+  };
 }

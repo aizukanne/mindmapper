@@ -345,6 +345,13 @@ familyTreesRouter.get('/:id', async (req, res, next) => {
           orderBy: [{ generation: 'asc' }, { lastName: 'asc' }, { firstName: 'asc' }],
         },
         relationships: true,
+        marriages: {
+          include: {
+            spouses: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
       },
     });
 
@@ -913,6 +920,81 @@ familyTreesRouter.post('/:treeId/marriages', async (req, res, next) => {
 // ==========================================
 // Member Management Routes
 // ==========================================
+
+// GET /api/family-trees/:treeId/invitations - List all invitations for a tree
+familyTreesRouter.get('/:treeId/invitations', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'ADMIN');
+
+    const invitations = await prisma.treeInvitation.findMany({
+      where: { treeId },
+      include: {
+        inviter: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        acceptor: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      success: true,
+      data: invitations,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/family-trees/:treeId/invitations/:invitationId - Cancel/revoke invitation
+familyTreesRouter.delete('/:treeId/invitations/:invitationId', async (req, res, next) => {
+  try {
+    const { treeId, invitationId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'ADMIN');
+
+    const invitation = await prisma.treeInvitation.findFirst({
+      where: {
+        id: invitationId,
+        treeId,
+      },
+    });
+
+    if (!invitation) {
+      throw new AppError(404, 'Invitation not found');
+    }
+
+    // Only allow cancellation of pending invitations
+    if (invitation.status !== 'PENDING') {
+      throw new AppError(400, 'Can only cancel pending invitations');
+    }
+
+    await prisma.treeInvitation.delete({
+      where: { id: invitationId },
+    });
+
+    res.json({
+      success: true,
+      message: 'Invitation cancelled',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // POST /api/family-trees/:treeId/invitations - Invite member
 familyTreesRouter.post('/:treeId/invitations', async (req, res, next) => {
@@ -7282,6 +7364,609 @@ familyTreesRouter.delete('/:treeId/people/:personId/dna', async (req, res, next)
     res.json({
       success: true,
       data: { deleted: true },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==========================================
+// Sibling Relationship Repair Routes
+// ==========================================
+
+// POST /api/family-trees/:treeId/repair-siblings - Comprehensive repair of sibling and parent relationships
+// This endpoint handles multiple scenarios:
+// PHASE 0: Transitive sibling linking - if A is sibling of B and B is sibling of C, A should be sibling of C
+// PHASE 1: Copy parents from "Full siblings" who have parents to those who don't
+// PHASE 2: Create missing sibling relationships based on shared parents
+familyTreesRouter.post('/:treeId/repair-siblings', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'ADMIN');
+
+    // Get all people and relationships in the tree
+    const tree = await prisma.familyTree.findFirst({
+      where: { id: treeId },
+      include: {
+        people: true,
+        relationships: true,
+      },
+    });
+
+    if (!tree) {
+      throw new AppError(404, 'Tree not found');
+    }
+
+    let { people, relationships } = tree;
+
+    // Track all repairs
+    const parentsAdded: { person: string; parent: string; type: string }[] = [];
+    const siblingsCreated: { from: string; to: string; type: string }[] = [];
+    let duplicatesRemoved = 0;
+
+    // ==========================================
+    // PHASE -1: Deduplicate existing relationships
+    // Remove duplicate relationships that violate the unique constraint
+    // ==========================================
+
+    // Group relationships by their unique key (personFromId, personToId, relationshipType)
+    const relMap = new Map<string, typeof relationships[0][]>();
+    for (const rel of relationships) {
+      const key = `${rel.personFromId}:${rel.personToId}:${rel.relationshipType}`;
+      if (!relMap.has(key)) {
+        relMap.set(key, []);
+      }
+      relMap.get(key)!.push(rel);
+    }
+
+    // Find and delete duplicates (keep the first one, delete the rest)
+    const duplicateIds: string[] = [];
+    for (const [, rels] of relMap) {
+      if (rels.length > 1) {
+        // Keep the first, mark the rest for deletion
+        for (let i = 1; i < rels.length; i++) {
+          duplicateIds.push(rels[i].id);
+        }
+      }
+    }
+
+    if (duplicateIds.length > 0) {
+      await prisma.relationship.deleteMany({
+        where: { id: { in: duplicateIds } },
+      });
+      duplicatesRemoved = duplicateIds.length;
+
+      // Remove deleted relationships from our local array
+      relationships = relationships.filter((r) => !duplicateIds.includes(r.id));
+    }
+
+    // Helper to build relationship maps from current state
+    const buildMaps = () => {
+      const parentToChildren = new Map<string, string[]>();
+      const childToParents = new Map<string, string[]>();
+      const siblingMap = new Map<string, Set<string>>(); // personId -> Set of siblingIds (BIDIRECTIONAL)
+      const siblingRelNotes = new Map<string, string>(); // "id1:id2" -> notes (e.g., "Full sibling")
+
+      for (const rel of relationships) {
+        if (rel.relationshipType === 'CHILD') {
+          const parentId = rel.personFromId;
+          const childId = rel.personToId;
+
+          if (!parentToChildren.has(parentId)) {
+            parentToChildren.set(parentId, []);
+          }
+          if (!parentToChildren.get(parentId)!.includes(childId)) {
+            parentToChildren.get(parentId)!.push(childId);
+          }
+
+          if (!childToParents.has(childId)) {
+            childToParents.set(childId, []);
+          }
+          if (!childToParents.get(childId)!.includes(parentId)) {
+            childToParents.get(childId)!.push(parentId);
+          }
+        } else if (rel.relationshipType === 'SIBLING') {
+          // Add BOTH directions to siblingMap for easier lookup
+          // This ensures we can traverse sibling relationships regardless of which direction was stored
+          if (!siblingMap.has(rel.personFromId)) {
+            siblingMap.set(rel.personFromId, new Set());
+          }
+          siblingMap.get(rel.personFromId)!.add(rel.personToId);
+
+          // Also add the reverse direction
+          if (!siblingMap.has(rel.personToId)) {
+            siblingMap.set(rel.personToId, new Set());
+          }
+          siblingMap.get(rel.personToId)!.add(rel.personFromId);
+
+          // Store notes for this sibling pair
+          const pairKey = [rel.personFromId, rel.personToId].sort().join(':');
+          if (rel.notes && !siblingRelNotes.has(pairKey)) {
+            siblingRelNotes.set(pairKey, rel.notes);
+          }
+        }
+      }
+
+      return { parentToChildren, childToParents, siblingMap, siblingRelNotes };
+    };
+
+    // Helper to check if a specific directional relationship exists
+    const relExists = (fromId: string, toId: string, type: string): boolean => {
+      return relationships.some(
+        (r) => r.relationshipType === type && r.personFromId === fromId && r.personToId === toId
+      );
+    };
+
+    // Helper to check if sibling relationship exists in BOTH directions
+    const siblingRelExistsBoth = (id1: string, id2: string): boolean => {
+      return relExists(id1, id2, 'SIBLING') && relExists(id2, id1, 'SIBLING');
+    };
+
+    // Helper to check if sibling relationship exists in EITHER direction
+    const siblingRelExistsAny = (id1: string, id2: string): boolean => {
+      return relExists(id1, id2, 'SIBLING') || relExists(id2, id1, 'SIBLING');
+    };
+
+    // Helper to create sibling relationship (bidirectional) - only creates missing directions
+    // Returns true if any relationships were created, false if all already existed
+    const createSiblingRel = async (id1: string, id2: string, notes: string): Promise<boolean> => {
+      let created = false;
+
+      // Only create id1 -> id2 if it doesn't exist (check both local array AND database)
+      if (!relExists(id1, id2, 'SIBLING')) {
+        // Double-check database to avoid race conditions
+        const dbExists = await prisma.relationship.findFirst({
+          where: { treeId, personFromId: id1, personToId: id2, relationshipType: 'SIBLING' },
+        });
+        if (!dbExists) {
+          const rel = await prisma.relationship.create({
+            data: { treeId, personFromId: id1, personToId: id2, relationshipType: 'SIBLING', notes },
+          });
+          relationships.push(rel);
+          created = true;
+        }
+      }
+
+      // Only create id2 -> id1 if it doesn't exist (check both local array AND database)
+      if (!relExists(id2, id1, 'SIBLING')) {
+        // Double-check database to avoid race conditions
+        const dbExists = await prisma.relationship.findFirst({
+          where: { treeId, personFromId: id2, personToId: id1, relationshipType: 'SIBLING' },
+        });
+        if (!dbExists) {
+          const rel = await prisma.relationship.create({
+            data: { treeId, personFromId: id2, personToId: id1, relationshipType: 'SIBLING', notes },
+          });
+          relationships.push(rel);
+          created = true;
+        }
+      }
+
+      return created;
+    };
+
+    // Helper to create parent-child relationship (bidirectional) - only creates missing directions
+    // Returns true if any relationships were created, false if all already existed
+    const createParentChildRel = async (parentId: string, childId: string): Promise<boolean> => {
+      let created = false;
+
+      // Only create parent -> child (CHILD type) if it doesn't exist (check both local array AND database)
+      if (!relExists(parentId, childId, 'CHILD')) {
+        // Double-check database to avoid race conditions
+        const dbExists = await prisma.relationship.findFirst({
+          where: { treeId, personFromId: parentId, personToId: childId, relationshipType: 'CHILD' },
+        });
+        if (!dbExists) {
+          const rel = await prisma.relationship.create({
+            data: { treeId, personFromId: parentId, personToId: childId, relationshipType: 'CHILD' },
+          });
+          relationships.push(rel);
+          created = true;
+        }
+      }
+
+      // Only create child -> parent (PARENT type) if it doesn't exist (check both local array AND database)
+      if (!relExists(childId, parentId, 'PARENT')) {
+        // Double-check database to avoid race conditions
+        const dbExists = await prisma.relationship.findFirst({
+          where: { treeId, personFromId: childId, personToId: parentId, relationshipType: 'PARENT' },
+        });
+        if (!dbExists) {
+          const rel = await prisma.relationship.create({
+            data: { treeId, personFromId: childId, personToId: parentId, relationshipType: 'PARENT' },
+          });
+          relationships.push(rel);
+          created = true;
+        }
+      }
+
+      return created;
+    };
+
+    let maps = buildMaps();
+
+    // ==========================================
+    // PHASE 0: Transitive sibling linking
+    // If A is sibling of B and B is sibling of C, then A should be sibling of C
+    // We determine sibling type based on shared parents when possible
+    // ==========================================
+
+    // Helper to check if a sibling type is "full" (case-insensitive, handles missing notes)
+    const isFullSiblingType = (notes: string | undefined): boolean => {
+      if (!notes) return true; // Default to full sibling if no notes
+      const lower = notes.toLowerCase();
+      return lower.includes('full') || (!lower.includes('half') && !lower.includes('step'));
+    };
+
+    // Helper to determine sibling type based on shared parents
+    const determineSiblingType = (id1: string, id2: string): string => {
+      const parents1 = maps.childToParents.get(id1) || [];
+      const parents2 = maps.childToParents.get(id2) || [];
+      const sharedParents = parents1.filter((p) => parents2.includes(p));
+
+      if (sharedParents.length >= 2) {
+        return 'Full sibling';
+      } else if (sharedParents.length === 1) {
+        return 'Half-sibling';
+      }
+      // If we can't determine from parents, check existing notes between them
+      const pairKey = [id1, id2].sort().join(':');
+      const existingNotes = maps.siblingRelNotes.get(pairKey);
+      if (existingNotes) return existingNotes;
+      // Default to Full sibling
+      return 'Full sibling';
+    };
+
+    let transitiveLinksCreated = 0;
+    const maxIterations = 10; // Prevent infinite loops
+
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      let linksCreatedThisIteration = 0;
+      maps = buildMaps(); // Refresh maps
+
+      for (const person of people) {
+        const personSiblings = maps.siblingMap.get(person.id);
+        if (!personSiblings || personSiblings.size === 0) continue;
+
+        // For each of this person's siblings, check if they have siblings that this person doesn't have
+        for (const siblingId of personSiblings) {
+          const siblingsSiblings = maps.siblingMap.get(siblingId);
+          if (!siblingsSiblings) continue;
+
+          // Get the sibling type between person and sibling
+          const personSiblingPairKey = [person.id, siblingId].sort().join(':');
+          const personSiblingNotes = maps.siblingRelNotes.get(personSiblingPairKey);
+
+          for (const siblingSiblingId of siblingsSiblings) {
+            // Skip if it's the same person or already linked
+            if (siblingSiblingId === person.id) continue;
+            if (personSiblings.has(siblingSiblingId)) continue;
+
+            // Get the sibling type between sibling and sibling's sibling
+            const siblingSiblingPairKey = [siblingId, siblingSiblingId].sort().join(':');
+            const siblingSiblingNotes = maps.siblingRelNotes.get(siblingSiblingPairKey);
+
+            // Transitively link if BOTH relationships are full siblings (or unspecified)
+            // For half-siblings, transitive linking is more complex (A half-sib of B, B half-sib of C doesn't mean A is related to C)
+            if (isFullSiblingType(personSiblingNotes) && isFullSiblingType(siblingSiblingNotes)) {
+              // Determine the correct sibling type for the new relationship
+              const newSiblingType = determineSiblingType(person.id, siblingSiblingId);
+
+              const wasCreated = await createSiblingRel(person.id, siblingSiblingId, newSiblingType);
+
+              if (wasCreated) {
+                const personObj = people.find((p) => p.id === person.id);
+                const siblingSiblingObj = people.find((p) => p.id === siblingSiblingId);
+                siblingsCreated.push({
+                  from: `${personObj?.firstName} ${personObj?.lastName}`,
+                  to: `${siblingSiblingObj?.firstName} ${siblingSiblingObj?.lastName}`,
+                  type: `${newSiblingType} (transitive)`,
+                });
+                linksCreatedThisIteration++;
+                transitiveLinksCreated++;
+              }
+            }
+          }
+        }
+      }
+
+      // If no new links created this iteration, we're done
+      if (linksCreatedThisIteration === 0) break;
+    }
+
+    // ==========================================
+    // PHASE 1: Copy parents from Full siblings who have parents to those who don't
+    // ==========================================
+
+    // Rebuild maps after Phase 0
+    maps = buildMaps();
+
+    // Multiple passes to propagate parents through sibling chains
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      let parentsAddedThisIteration = 0;
+      maps = buildMaps(); // Refresh maps
+
+      for (const person of people) {
+        const personParents = maps.childToParents.get(person.id) || [];
+        const personSiblings = maps.siblingMap.get(person.id);
+
+        // Skip if person already has 2+ parents or has no siblings
+        if (personParents.length >= 2 || !personSiblings || personSiblings.size === 0) continue;
+
+        // Check each sibling to find parents we can copy
+        for (const siblingId of personSiblings) {
+          // Get the sibling type from notes
+          const pairKey = [person.id, siblingId].sort().join(':');
+          const siblingNotes = maps.siblingRelNotes.get(pairKey);
+
+          // Only copy parents from Full siblings (use our helper that handles missing notes)
+          if (!isFullSiblingType(siblingNotes)) continue;
+
+          const siblingParents = maps.childToParents.get(siblingId) || [];
+
+          // Copy each parent the sibling has that this person doesn't
+          for (const siblingParentId of siblingParents) {
+            if (personParents.includes(siblingParentId)) continue;
+
+            // Create parent-child relationship (returns true only if something was created)
+            const wasCreated = await createParentChildRel(siblingParentId, person.id);
+
+            if (wasCreated) {
+              const parentPerson = people.find((p) => p.id === siblingParentId);
+              const childPerson = people.find((p) => p.id === person.id);
+              parentsAdded.push({
+                person: `${childPerson?.firstName} ${childPerson?.lastName}`,
+                parent: `${parentPerson?.firstName} ${parentPerson?.lastName}`,
+                type: 'Copied from full sibling',
+              });
+
+              personParents.push(siblingParentId);
+              parentsAddedThisIteration++;
+            }
+          }
+        }
+      }
+
+      // If no new parents added this iteration, we're done
+      if (parentsAddedThisIteration === 0) break;
+    }
+
+    // ==========================================
+    // PHASE 2: Create missing sibling relationships based on shared parents
+    // ==========================================
+
+    // Rebuild maps after Phase 1
+    maps = buildMaps();
+
+    const processedPairs = new Set<string>();
+
+    for (const person of people) {
+      const personParents = maps.childToParents.get(person.id) || [];
+      if (personParents.length === 0) continue;
+
+      // Find all potential siblings (children of any of this person's parents)
+      const potentialSiblings = new Set<string>();
+      for (const parentId of personParents) {
+        const children = maps.parentToChildren.get(parentId) || [];
+        for (const childId of children) {
+          if (childId !== person.id) {
+            potentialSiblings.add(childId);
+          }
+        }
+      }
+
+      // Create sibling relationships for potential siblings who aren't linked
+      for (const siblingId of potentialSiblings) {
+        const pairKey = [person.id, siblingId].sort().join(':');
+        if (processedPairs.has(pairKey)) continue;
+        processedPairs.add(pairKey);
+
+        // Determine sibling type based on shared parents
+        const siblingParents = maps.childToParents.get(siblingId) || [];
+        const sharedParents = personParents.filter((p) => siblingParents.includes(p));
+
+        let siblingNotes: string;
+        if (sharedParents.length >= 2) {
+          siblingNotes = 'Full sibling';
+        } else if (sharedParents.length === 1) {
+          siblingNotes = 'Half-sibling';
+        } else {
+          siblingNotes = 'Step-sibling';
+        }
+
+        const wasCreated = await createSiblingRel(person.id, siblingId, siblingNotes);
+
+        if (wasCreated) {
+          const personObj = people.find((p) => p.id === person.id);
+          const siblingObj = people.find((p) => p.id === siblingId);
+          siblingsCreated.push({
+            from: `${personObj?.firstName} ${personObj?.lastName}`,
+            to: `${siblingObj?.firstName} ${siblingObj?.lastName}`,
+            type: siblingNotes,
+          });
+        }
+      }
+    }
+
+    const totalRepairs = parentsAdded.length + siblingsCreated.length;
+
+    res.json({
+      success: true,
+      message: `Repaired ${totalRepairs} relationship(s): ${parentsAdded.length} parent link(s), ${siblingsCreated.length} sibling link(s), ${duplicatesRemoved} duplicate(s) removed`,
+      data: {
+        parentsAdded: parentsAdded.length,
+        siblingsCreated: siblingsCreated.length,
+        duplicatesRemoved,
+        parentRelationships: parentsAdded,
+        siblingRelationships: siblingsCreated,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==========================================
+// People with Missing Parents Routes
+// ==========================================
+
+// GET /api/family-trees/:treeId/people-missing-parents - Get list of people who don't have exactly 2 parents
+familyTreesRouter.get('/:treeId/people-missing-parents', async (req, res, next) => {
+  try {
+    const { treeId } = req.params;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'VIEWER');
+
+    // Get all people and relationships
+    const tree = await prisma.familyTree.findFirst({
+      where: { id: treeId },
+      include: {
+        people: true,
+        relationships: {
+          where: { relationshipType: 'CHILD' },
+        },
+      },
+    });
+
+    if (!tree) {
+      throw new AppError(404, 'Tree not found');
+    }
+
+    // Build a map of child -> parents count
+    const childToParentsCount = new Map<string, number>();
+    const childToParents = new Map<string, string[]>();
+
+    for (const rel of tree.relationships) {
+      const childId = rel.personToId;
+      const parentId = rel.personFromId;
+
+      if (!childToParentsCount.has(childId)) {
+        childToParentsCount.set(childId, 0);
+        childToParents.set(childId, []);
+      }
+      childToParentsCount.set(childId, childToParentsCount.get(childId)! + 1);
+      childToParents.get(childId)!.push(parentId);
+    }
+
+    // Find people who don't have exactly 2 parents
+    const peopleMissingParents = tree.people
+      .filter((p) => {
+        const parentCount = childToParentsCount.get(p.id) || 0;
+        return parentCount < 2;
+      })
+      .map((p) => {
+        const parentCount = childToParentsCount.get(p.id) || 0;
+        const parentIds = childToParents.get(p.id) || [];
+        const parents = parentIds.map((pid) => {
+          const parent = tree.people.find((pp) => pp.id === pid);
+          return parent
+            ? { id: pid, firstName: parent.firstName, lastName: parent.lastName }
+            : { id: pid, firstName: 'Unknown', lastName: '' };
+        });
+
+        return {
+          id: p.id,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          birthDate: p.birthDate,
+          parentCount,
+          parents,
+          missingCount: 2 - parentCount,
+        };
+      })
+      .sort((a, b) => b.missingCount - a.missingCount); // Sort by most missing first
+
+    res.json({
+      success: true,
+      data: {
+        total: peopleMissingParents.length,
+        people: peopleMissingParents,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/family-trees/:treeId/people/:personId/add-parent - Add a parent to a person
+familyTreesRouter.post('/:treeId/people/:personId/add-parent', async (req, res, next) => {
+  try {
+    const { treeId, personId } = req.params;
+    const { parentId } = req.body;
+    const userId = getUserId(req);
+
+    await checkTreeAccess(treeId, userId, 'ADMIN');
+
+    if (!parentId) {
+      throw new AppError(400, 'parentId is required');
+    }
+
+    // Verify both people exist in the tree
+    const [person, parent] = await Promise.all([
+      prisma.person.findFirst({ where: { id: personId, treeId } }),
+      prisma.person.findFirst({ where: { id: parentId, treeId } }),
+    ]);
+
+    if (!person) {
+      throw new AppError(404, 'Person not found');
+    }
+    if (!parent) {
+      throw new AppError(404, 'Parent not found');
+    }
+
+    // Check if this parent relationship already exists
+    const existingRel = await prisma.relationship.findFirst({
+      where: {
+        treeId,
+        personFromId: parentId,
+        personToId: personId,
+        relationshipType: 'CHILD',
+      },
+    });
+
+    if (existingRel) {
+      throw new AppError(409, 'This parent relationship already exists');
+    }
+
+    // Check current parent count
+    const currentParentCount = await prisma.relationship.count({
+      where: {
+        treeId,
+        personToId: personId,
+        relationshipType: 'CHILD',
+      },
+    });
+
+    if (currentParentCount >= 2) {
+      throw new AppError(400, 'Person already has 2 parents');
+    }
+
+    // Create bidirectional relationships
+    await prisma.$transaction([
+      prisma.relationship.create({
+        data: {
+          treeId,
+          personFromId: parentId,
+          personToId: personId,
+          relationshipType: 'CHILD',
+        },
+      }),
+      prisma.relationship.create({
+        data: {
+          treeId,
+          personFromId: personId,
+          personToId: parentId,
+          relationshipType: 'PARENT',
+        },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      message: `Added ${parent.firstName} ${parent.lastName} as parent of ${person.firstName} ${person.lastName}`,
     });
   } catch (error) {
     next(error);

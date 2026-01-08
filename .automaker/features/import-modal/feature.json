@@ -1,0 +1,18 @@
+{
+  "id": "import-modal",
+  "category": "UI",
+  "title": "Import Modal Component",
+  "description": "Create modal with drag-drop file upload, format detection, preview before import, and error reporting for invalid files.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "import-json-parser",
+    "import-freemind-parser",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.260Z",
+  "updatedAt": "2026-01-07T06:56:02.650Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:48:55.304Z"
+}

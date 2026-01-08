@@ -1,0 +1,17 @@
+{
+  "id": "yjs-websocket-provider",
+  "category": "Collaboration",
+  "title": "Yjs WebSocket Provider",
+  "description": "Create y-websocket provider connecting frontend to WebSocket server. Handle connection states, reconnection logic, and error handling.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "yjs-core-setup",
+    "websocket-server"
+  ],
+  "createdAt": "2026-01-07T00:20:10.242Z",
+  "updatedAt": "2026-01-07T04:46:53.225Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T04:44:04.254Z"
+}

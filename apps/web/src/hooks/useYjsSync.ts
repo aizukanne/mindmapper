@@ -7,11 +7,13 @@ import { useMapStore, type MindMapNode, type MindMapEdge } from '@/stores/mapSto
 import {
   createYjsDoc,
   createWebsocketProvider,
-  createOfflinePersistence,
+  createEnhancedOfflinePersistence,
   yjsMapToArray,
   getRandomPresenceColor,
   type YjsNodeData,
   type YjsConnectionData,
+  type OfflineSyncState,
+  type OfflineSyncManager,
 } from '@/lib/yjs-provider';
 import type { NodeStyle, ConnectionStyle } from '@mindmapper/types';
 
@@ -25,6 +27,7 @@ interface SyncState {
   isConnected: boolean;
   isSynced: boolean;
   isOffline: boolean;
+  offlineSync: OfflineSyncState | null;
 }
 
 interface UndoState {
@@ -37,6 +40,7 @@ const defaultNodeStyle: NodeStyle = {
   borderColor: '#d1d5db',
   borderWidth: 1,
   borderRadius: 8,
+  borderStyle: 'solid',
   textColor: '#1f2937',
   fontSize: 14,
   fontWeight: 'normal',
@@ -58,6 +62,7 @@ export function useYjsSync({ mapId, userId, userName }: UseYjsSyncOptions) {
     isConnected: false,
     isSynced: false,
     isOffline: false,
+    offlineSync: null,
   });
   const [undoState, setUndoState] = useState<UndoState>({
     canUndo: false,
@@ -67,6 +72,7 @@ export function useYjsSync({ mapId, userId, userName }: UseYjsSyncOptions) {
   const docRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const persistenceRef = useRef<IndexeddbPersistence | null>(null);
+  const syncManagerRef = useRef<OfflineSyncManager | null>(null);
   const nodesMapRef = useRef<Y.Map<YjsNodeData> | null>(null);
   const connectionsMapRef = useRef<Y.Map<YjsConnectionData> | null>(null);
   const undoManagerRef = useRef<UndoManager | null>(null);
@@ -137,9 +143,23 @@ export function useYjsSync({ mapId, userId, userName }: UseYjsSyncOptions) {
     undoManager.on('stack-item-popped', updateUndoState);
     undoManager.on('stack-cleared', updateUndoState);
 
-    // Create offline persistence
-    const persistence = createOfflinePersistence(mapId, doc);
+    // Create enhanced offline persistence with sync tracking
+    const { persistence, syncManager } = createEnhancedOfflinePersistence(mapId, doc, {
+      onStatusChange: (state) => {
+        setSyncState((prev) => ({ ...prev, offlineSync: state }));
+      },
+      onSyncComplete: () => {
+        console.log('[Yjs] Offline changes synced successfully');
+      },
+      onSyncError: (error) => {
+        console.error('[Yjs] Sync error:', error);
+      },
+      onOfflineChangesQueued: (count) => {
+        console.log(`[Yjs] ${count} changes queued for sync`);
+      },
+    });
     persistenceRef.current = persistence;
+    syncManagerRef.current = syncManager;
 
     // Create WebSocket provider
     const provider = createWebsocketProvider(mapId, doc);
@@ -158,10 +178,16 @@ export function useYjsSync({ mapId, userId, userName }: UseYjsSyncOptions) {
 
     // Listen for connection status
     provider.on('status', (event: { status: string }) => {
+      const isConnected = event.status === 'connected';
+      const isOffline = event.status === 'disconnected';
+
+      // Notify sync manager of connection change
+      syncManager.setConnected(isConnected);
+
       setSyncState((prev) => ({
         ...prev,
-        isConnected: event.status === 'connected',
-        isOffline: event.status === 'disconnected',
+        isConnected,
+        isOffline,
       }));
     });
 
@@ -169,6 +195,8 @@ export function useYjsSync({ mapId, userId, userName }: UseYjsSyncOptions) {
       setSyncState((prev) => ({ ...prev, isSynced }));
       if (isSynced) {
         syncFromYjs();
+        // Check and sync any pending offline changes
+        syncManager.checkAndSync();
       }
     });
 
@@ -195,7 +223,7 @@ export function useYjsSync({ mapId, userId, userName }: UseYjsSyncOptions) {
       undoManager.destroy();
       provider.disconnect();
       provider.destroy();
-      persistence.destroy();
+      syncManager.destroy();
       doc.destroy();
     };
   }, [mapId, userId, userName, syncFromYjs]);

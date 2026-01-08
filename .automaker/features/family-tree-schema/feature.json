@@ -1,0 +1,16 @@
+{
+  "id": "family-tree-schema",
+  "category": "Database",
+  "title": "Family Tree Database Schema",
+  "description": "Create comprehensive Prisma schema for FamilyTree, Person, Relationship, Marriage models with all genealogy fields.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "complex",
+  "dependencies": [
+    "prisma-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.262Z",
+  "updatedAt": "2026-01-07T00:44:51.023Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T00:38:23.752Z"
+}

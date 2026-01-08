@@ -2,24 +2,72 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { AppError } from '../middleware/errorHandler.js';
+import { AppError, asyncHandler } from '../middleware/errorHandler.js';
+import {
+  validate,
+  validateBody,
+  validateParams,
+  validateQuery,
+  type ValidatedRequest,
+} from '../middleware/validate.js';
+import {
+  cuidSchema,
+  optionalIdSchema,
+  queryBooleanSchema,
+} from '../lib/validation/index.js';
+import {
+  requireMapAccess,
+  requireMapEditor,
+  requireMapOwnership,
+  requireMapAccessOrPublic,
+  type PermissionRequest,
+} from '../middleware/permissionCheck.js';
 
 export const mapsRouter = Router();
 
-// Validation schemas
+// ==========================================
+// Validation Schemas
+// ==========================================
+
+// Request body schemas
 const createMapSchema = z.object({
-  title: z.string().min(1).max(255),
-  description: z.string().max(1000).optional(),
-  folderId: z.string().cuid().optional(),
+  title: z.string().min(1, 'Title is required').max(255, 'Title must be 255 characters or less'),
+  description: z.string().max(1000, 'Description must be 1000 characters or less').optional(),
+  folderId: z.string().cuid('Invalid folder ID').optional(),
 });
 
 const updateMapSchema = z.object({
-  title: z.string().min(1).max(255).optional(),
-  description: z.string().max(1000).optional(),
+  title: z.string().min(1, 'Title is required').max(255, 'Title must be 255 characters or less').optional(),
+  description: z.string().max(1000, 'Description must be 1000 characters or less').optional(),
   isFavorite: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   settings: z.record(z.unknown()).optional(),
 });
+
+// Query parameter schemas
+const listMapsQuerySchema = z.object({
+  folderId: z.string().optional(),
+  favorite: queryBooleanSchema,
+  archived: queryBooleanSchema,
+});
+
+// URL parameter schemas
+const mapIdParamSchema = z.object({
+  id: cuidSchema,
+});
+
+// ==========================================
+// Type Definitions
+// ==========================================
+
+type CreateMapBody = z.infer<typeof createMapSchema>;
+type UpdateMapBody = z.infer<typeof updateMapSchema>;
+type ListMapsQuery = z.infer<typeof listMapsQuerySchema>;
+type MapIdParams = z.infer<typeof mapIdParamSchema>;
+
+// ==========================================
+// Helper Functions
+// ==========================================
 
 // Fallback user ID for development when auth is disabled
 const DEV_USER_ID = 'dev-user-id';
@@ -29,16 +77,22 @@ function getUserId(req: Request): string {
   return req.userId || DEV_USER_ID;
 }
 
+// ==========================================
+// Route Handlers
+// ==========================================
+
 // GET /api/maps - List all maps for user
-mapsRouter.get('/', async (req, res, next) => {
-  try {
+mapsRouter.get(
+  '/',
+  validateQuery(listMapsQuerySchema),
+  asyncHandler(async (req, res) => {
     const userId = getUserId(req);
-    const { folderId, favorite, archived } = req.query;
+    const { folderId, favorite, archived } = (req as ValidatedRequest).validatedQuery as ListMapsQuery;
 
     // Build where clause
     const where: Prisma.MindMapWhereInput = {
       userId,
-      isArchived: archived === 'true' ? true : false,
+      isArchived: archived === true,
     };
 
     // Handle folder filtering
@@ -48,12 +102,12 @@ mapsRouter.get('/', async (req, res, next) => {
       if (folderId === 'null' || folderId === '') {
         where.folderId = null;
       } else {
-        where.folderId = folderId as string;
+        where.folderId = folderId;
       }
     }
     // If folderId is not provided, show all maps (don't filter by folder)
 
-    if (favorite === 'true') {
+    if (favorite === true) {
       where.isFavorite = true;
     }
 
@@ -71,15 +125,15 @@ mapsRouter.get('/', async (req, res, next) => {
       success: true,
       data: maps,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 // POST /api/maps - Create new map
-mapsRouter.post('/', async (req, res, next) => {
-  try {
-    const data = createMapSchema.parse(req.body);
+mapsRouter.post(
+  '/',
+  validateBody(createMapSchema),
+  asyncHandler(async (req, res) => {
+    const data = (req as ValidatedRequest).validatedBody as CreateMapBody;
 
     // Ensure user exists (create if not for development)
     await prisma.user.upsert({
@@ -128,24 +182,24 @@ mapsRouter.post('/', async (req, res, next) => {
       success: true,
       data: map,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 // GET /api/maps/:id - Get single map with all nodes
-mapsRouter.get('/:id', async (req, res, next) => {
-  try {
-    const { id } = req.params;
+// Uses requireMapAccessOrPublic to allow access if:
+// - User is the owner
+// - User has explicit share permission
+// - Map is public
+mapsRouter.get(
+  '/:id',
+  validateParams(mapIdParamSchema),
+  requireMapAccessOrPublic(),
+  asyncHandler(async (req, res) => {
+    const { id } = (req as ValidatedRequest).validatedParams as MapIdParams;
+    const permissionInfo = (req as PermissionRequest).mapPermission;
 
-    const map = await prisma.mindMap.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId: getUserId(req) },
-          { isPublic: true },
-        ],
-      },
+    const map = await prisma.mindMap.findUnique({
+      where: { id },
       include: {
         nodes: {
           orderBy: { sortOrder: 'asc' },
@@ -161,25 +215,23 @@ mapsRouter.get('/:id', async (req, res, next) => {
     res.json({
       success: true,
       data: map,
+      permission: permissionInfo?.permission,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 // PUT /api/maps/:id - Update map
-mapsRouter.put('/:id', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const data = updateMapSchema.parse(req.body);
-
-    const map = await prisma.mindMap.findFirst({
-      where: { id, userId: getUserId(req) },
-    });
-
-    if (!map) {
-      throw new AppError(404, 'Mind map not found');
-    }
+// Requires EDITOR permission (owner or editor via share)
+mapsRouter.put(
+  '/:id',
+  validate({
+    params: mapIdParamSchema,
+    body: updateMapSchema,
+  }),
+  requireMapEditor(),
+  asyncHandler(async (req, res) => {
+    const { id } = (req as ValidatedRequest).validatedParams as MapIdParams;
+    const data = (req as ValidatedRequest).validatedBody as UpdateMapBody;
 
     const updatedMap = await prisma.mindMap.update({
       where: { id },
@@ -196,23 +248,17 @@ mapsRouter.put('/:id', async (req, res, next) => {
       success: true,
       data: updatedMap,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 // DELETE /api/maps/:id - Delete map
-mapsRouter.delete('/:id', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const map = await prisma.mindMap.findFirst({
-      where: { id, userId: getUserId(req) },
-    });
-
-    if (!map) {
-      throw new AppError(404, 'Mind map not found');
-    }
+// Requires OWNER permission (only the map owner can delete)
+mapsRouter.delete(
+  '/:id',
+  validateParams(mapIdParamSchema),
+  requireMapOwnership(),
+  asyncHandler(async (req, res) => {
+    const { id } = (req as ValidatedRequest).validatedParams as MapIdParams;
 
     await prisma.mindMap.delete({
       where: { id },
@@ -222,24 +268,51 @@ mapsRouter.delete('/:id', async (req, res, next) => {
       success: true,
       message: 'Mind map deleted',
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
+
+// PATCH /api/maps/:id/favorite - Toggle favorite status
+// Requires OWNER permission (only owner can favorite their own map)
+mapsRouter.patch(
+  '/:id/favorite',
+  validateParams(mapIdParamSchema),
+  requireMapOwnership(),
+  asyncHandler(async (req, res) => {
+    const { id } = (req as ValidatedRequest).validatedParams as MapIdParams;
+
+    const map = await prisma.mindMap.findUnique({
+      where: { id },
+    });
+
+    if (!map) {
+      throw new AppError(404, 'Mind map not found');
+    }
+
+    const updatedMap = await prisma.mindMap.update({
+      where: { id },
+      data: {
+        isFavorite: !map.isFavorite,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: updatedMap,
+    });
+  })
+);
 
 // POST /api/maps/:id/duplicate - Duplicate a map
-mapsRouter.post('/:id/duplicate', async (req, res, next) => {
-  try {
-    const { id } = req.params;
+// Requires at least VIEWER access (can duplicate maps you have access to)
+mapsRouter.post(
+  '/:id/duplicate',
+  validateParams(mapIdParamSchema),
+  requireMapAccessOrPublic(),
+  asyncHandler(async (req, res) => {
+    const { id } = (req as ValidatedRequest).validatedParams as MapIdParams;
 
-    const originalMap = await prisma.mindMap.findFirst({
-      where: {
-        id,
-        OR: [
-          { userId: getUserId(req) },
-          { isPublic: true },
-        ],
-      },
+    const originalMap = await prisma.mindMap.findUnique({
+      where: { id },
       include: {
         nodes: true,
         connections: true,
@@ -255,7 +328,7 @@ mapsRouter.post('/:id/duplicate', async (req, res, next) => {
       data: {
         title: `${originalMap.title} (Copy)`,
         description: originalMap.description,
-        settings: originalMap.settings as any,
+        settings: originalMap.settings as Prisma.InputJsonValue,
         userId: getUserId(req),
       },
     });
@@ -275,8 +348,8 @@ mapsRouter.post('/:id/duplicate', async (req, res, next) => {
           positionY: node.positionY,
           width: node.width,
           height: node.height,
-          style: node.style as any,
-          metadata: node.metadata as any,
+          style: node.style as Prisma.InputJsonValue,
+          metadata: node.metadata as Prisma.InputJsonValue,
           sortOrder: node.sortOrder,
           isCollapsed: node.isCollapsed,
         },
@@ -303,7 +376,7 @@ mapsRouter.post('/:id/duplicate', async (req, res, next) => {
           targetNodeId: nodeIdMap.get(conn.targetNodeId)!,
           type: conn.type,
           label: conn.label,
-          style: conn.style as any,
+          style: conn.style as Prisma.InputJsonValue,
         },
       });
     }
@@ -312,7 +385,5 @@ mapsRouter.post('/:id/duplicate', async (req, res, next) => {
       success: true,
       data: newMap,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);

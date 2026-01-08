@@ -1,0 +1,16 @@
+{
+  "id": "mobile-touch-gestures",
+  "category": "Mobile",
+  "title": "Touch Gesture Support",
+  "description": "Implement pinch-to-zoom, two-finger pan, double-tap zoom, and long-press context menu for mobile devices.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "react-flow-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.260Z",
+  "updatedAt": "2026-01-07T07:09:00.478Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:58:49.339Z"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "mobile-toolbar",
+  "category": "Mobile",
+  "title": "Mobile Bottom Toolbar",
+  "description": "Create mobile-optimized toolbar at bottom of screen with essential actions. Use bottom sheet for additional options.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "toolbar-component"
+  ],
+  "createdAt": "2026-01-07T00:20:10.261Z",
+  "updatedAt": "2026-01-07T07:11:12.438Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:08:58.254Z"
+}

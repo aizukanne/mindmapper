@@ -1,0 +1,16 @@
+{
+  "id": "node-styling",
+  "category": "UI",
+  "title": "Node Styling Options",
+  "description": "Implement node styling with color picker, font size selector, border style, and background options. Apply styles to selected nodes.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "node-properties-panel"
+  ],
+  "createdAt": "2026-01-07T00:20:10.247Z",
+  "updatedAt": "2026-01-07T07:30:19.106Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:14:13.308Z"
+}

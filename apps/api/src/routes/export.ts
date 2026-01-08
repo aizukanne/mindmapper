@@ -47,6 +47,17 @@ async function getMapData(mapId: string) {
         orderBy: { sortOrder: 'asc' },
       },
       connections: true,
+      comments: {
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
       user: {
         select: {
           name: true,
@@ -73,15 +84,33 @@ interface ExportedNode {
   children?: ExportedNode[];
 }
 
+// Interface for exported comment
+interface ExportedComment {
+  id: string;
+  nodeId: string | null;
+  text: string;
+  resolved: boolean;
+  parentId: string | null;
+  createdAt: string;
+  author?: {
+    name: string | null;
+    email: string;
+  };
+}
+
 // Interface for exported map
 interface ExportedMap {
   version: string;
   exportedAt: string;
   format: string;
+  schema: string; // Schema identifier for validation
   map: {
     id: string;
     title: string;
     description: string | null;
+    isPublic: boolean;
+    isFavorite: boolean;
+    settings: unknown; // MindMapSettings
     createdAt: string;
     updatedAt: string;
     author?: {
@@ -98,6 +127,13 @@ interface ExportedMap {
     label: string | null;
     style: unknown;
   }>;
+  comments?: ExportedComment[];
+  metadata: {
+    nodeCount: number;
+    connectionCount: number;
+    commentCount: number;
+    exportedBy?: string;
+  };
 }
 
 // Build hierarchical node structure
@@ -127,11 +163,19 @@ function buildNodeHierarchy(nodes: ExportedNode[]): ExportedNode[] {
   return rootNodes;
 }
 
-// Convert node to markdown outline
+// Convert node to markdown outline with proper hierarchical structure
 function nodeToMarkdown(node: ExportedNode, depth: number = 0): string {
-  const indent = '  '.repeat(depth);
-  const bullet = depth === 0 ? '#' : '-';
-  let result = `${indent}${bullet} ${node.text}\n`;
+  let result = '';
+
+  if (depth === 0) {
+    // Root nodes become H2 headings (H1 is reserved for the document title)
+    result = `## ${node.text}\n\n`;
+  } else {
+    // Child nodes use proper indentation with bullet points
+    // Each level is indented with 2 spaces
+    const indent = '  '.repeat(depth - 1);
+    result = `${indent}- ${node.text}\n`;
+  }
 
   if (node.children && node.children.length > 0) {
     // Sort children by sortOrder
@@ -139,6 +183,11 @@ function nodeToMarkdown(node: ExportedNode, depth: number = 0): string {
     sortedChildren.forEach(child => {
       result += nodeToMarkdown(child, depth + 1);
     });
+
+    // Add extra newline after root nodes with children for better readability
+    if (depth === 0) {
+      result += '\n';
+    }
   }
 
   return result;
@@ -236,10 +285,11 @@ function escapeXml(text: string): string {
     .replace(/'/g, '&apos;');
 }
 
-// GET /api/maps/:id/export/json - Export as JSON
+// GET /api/maps/:id/export/json - Export as JSON (full export including all map data)
 exportRouter.get('/:id/export/json', async (req: Request, res: Response, next) => {
   try {
     const { id: mapId } = req.params;
+    const includeComments = req.query.includeComments !== 'false'; // Include comments by default
 
     const hasAccess = await checkMapAccess(req, mapId);
     if (!hasAccess) {
@@ -251,14 +301,21 @@ exportRouter.get('/:id/export/json', async (req: Request, res: Response, next) =
       throw new AppError(404, 'Mind map not found');
     }
 
+    const userId = getUserId(req);
+
+    // Build the full export data structure
     const exportData: ExportedMap = {
-      version: '1.0',
+      version: '1.1', // Upgraded version for enhanced format
       exportedAt: new Date().toISOString(),
       format: 'mindmapper-json',
+      schema: 'https://mindmapper.app/schemas/export/v1.1.json', // Schema reference for validation
       map: {
         id: map.id,
         title: map.title,
         description: map.description,
+        isPublic: map.isPublic,
+        isFavorite: map.isFavorite,
+        settings: map.settings, // Include map settings (canvas background, grid, layout, etc.)
         createdAt: map.createdAt.toISOString(),
         updatedAt: map.updatedAt.toISOString(),
         author: map.user ? {
@@ -286,6 +343,26 @@ exportRouter.get('/:id/export/json', async (req: Request, res: Response, next) =
         label: conn.label,
         style: conn.style,
       })),
+      // Include comments if requested (default: true)
+      comments: includeComments ? map.comments.map(comment => ({
+        id: comment.id,
+        nodeId: comment.nodeId,
+        text: comment.text,
+        resolved: comment.resolved,
+        parentId: comment.parentId,
+        createdAt: comment.createdAt.toISOString(),
+        author: comment.user ? {
+          name: comment.user.name,
+          email: comment.user.email,
+        } : undefined,
+      })) : undefined,
+      // Metadata for quick overview
+      metadata: {
+        nodeCount: map.nodes.length,
+        connectionCount: map.connections.length,
+        commentCount: map.comments.length,
+        exportedBy: userId,
+      },
     };
 
     const filename = `${map.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.json`;
@@ -329,7 +406,7 @@ exportRouter.get('/:id/export/markdown', async (req: Request, res: Response, nex
 
     const hierarchy = buildNodeHierarchy(flatNodes);
 
-    // Generate markdown
+    // Generate markdown with proper hierarchical outline format
     let markdown = `# ${map.title}\n\n`;
 
     if (map.description) {
@@ -338,19 +415,21 @@ exportRouter.get('/:id/export/markdown', async (req: Request, res: Response, nex
 
     markdown += `---\n\n`;
 
+    // Process each root node
     hierarchy.forEach(rootNode => {
       markdown += nodeToMarkdown(rootNode, 0);
-      markdown += '\n';
     });
 
-    markdown += `\n---\n\n`;
+    markdown += `---\n\n`;
     markdown += `*Exported from MindMapper on ${new Date().toLocaleDateString()}*\n`;
 
-    const filename = `${map.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.md`;
-
-    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(markdown);
+    // Return JSON response for frontend compatibility
+    res.json({
+      success: true,
+      data: markdown,
+      format: 'markdown',
+      filename: `${map.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.md`,
+    });
   } catch (error) {
     next(error);
   }
@@ -372,11 +451,14 @@ exportRouter.get('/:id/export/svg', async (req: Request, res: Response, next) =>
     }
 
     const svg = generateSVG(map.nodes, map.connections);
-    const filename = `${map.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.svg`;
 
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(svg);
+    // Return JSON response for frontend compatibility
+    res.json({
+      success: true,
+      data: svg,
+      format: 'svg',
+      filename: `${map.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.svg`,
+    });
   } catch (error) {
     next(error);
   }
@@ -511,11 +593,13 @@ exportRouter.get('/:id/export/text', async (req: Request, res: Response, next) =
       text += '\n';
     });
 
-    const filename = `${map.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.txt`;
-
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(text);
+    // Return JSON response for frontend compatibility
+    res.json({
+      success: true,
+      data: text,
+      format: 'text',
+      filename: `${map.title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.txt`,
+    });
   } catch (error) {
     next(error);
   }

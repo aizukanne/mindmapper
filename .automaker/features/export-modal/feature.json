@@ -1,0 +1,21 @@
+{
+  "id": "export-modal",
+  "category": "UI",
+  "title": "Export Modal Component",
+  "description": "Create modal for selecting export format with preview and format-specific options. Trigger download after export generation.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "export-json",
+    "export-markdown",
+    "export-svg",
+    "export-png",
+    "export-pdf",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.259Z",
+  "updatedAt": "2026-01-07T05:53:20.019Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:50:16.254Z"
+}

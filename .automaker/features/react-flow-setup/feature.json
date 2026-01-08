@@ -1,0 +1,16 @@
+{
+  "id": "react-flow-setup",
+  "category": "UI",
+  "title": "React Flow Installation",
+  "description": "Install @xyflow/react and configure basic canvas setup. Create wrapper component with background, controls, and minimap.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "vite-react-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.240Z",
+  "updatedAt": "2026-01-07T02:08:03.528Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T02:01:54.051Z"
+}

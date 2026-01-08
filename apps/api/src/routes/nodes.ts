@@ -3,6 +3,13 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
+import {
+  trackNodeChange,
+  trackNodeMove,
+  trackConnectionChange,
+  trackBatchOperations,
+  type BatchOperationResult,
+} from '../middleware/historyTracking.js';
 
 export const nodesRouter = Router();
 
@@ -83,9 +90,12 @@ nodesRouter.post('/:mapId/nodes', async (req, res, next) => {
       },
     });
 
+    // Track node creation
+    await trackNodeChange(req, mapId, node.id, 'CREATE', null, node);
+
     // Create connection if has parent
     if (data.parentId) {
-      await prisma.connection.create({
+      const connection = await prisma.connection.create({
         data: {
           mindMapId: mapId,
           sourceNodeId: data.parentId,
@@ -93,6 +103,9 @@ nodesRouter.post('/:mapId/nodes', async (req, res, next) => {
           type: 'HIERARCHICAL',
         },
       });
+
+      // Track connection creation
+      await trackConnectionChange(req, mapId, connection.id, 'CREATE', null, connection);
     }
 
     res.status(201).json({
@@ -122,6 +135,9 @@ nodesRouter.put('/:mapId/nodes/:nodeId', async (req, res, next) => {
       throw new AppError(404, 'Node not found');
     }
 
+    // Capture previous state for history
+    const previousState = { ...node };
+
     const updateData: Prisma.NodeUpdateInput = {
       text: data.text,
       positionX: data.positionX,
@@ -140,6 +156,9 @@ nodesRouter.put('/:mapId/nodes/:nodeId', async (req, res, next) => {
       where: { id: nodeId },
       data: updateData,
     });
+
+    // Track node update
+    await trackNodeChange(req, mapId, nodeId, 'UPDATE', previousState, updatedNode);
 
     res.json({
       success: true,
@@ -171,10 +190,16 @@ nodesRouter.delete('/:mapId/nodes/:nodeId', async (req, res, next) => {
       throw new AppError(400, 'Cannot delete root node');
     }
 
+    // Capture state before deletion for history
+    const previousState = { ...node };
+
     // Delete cascades to children and connections via Prisma schema
     await prisma.node.delete({
       where: { id: nodeId },
     });
+
+    // Track node deletion
+    await trackNodeChange(req, mapId, nodeId, 'DELETE', previousState, null);
 
     res.json({
       success: true,
@@ -194,6 +219,9 @@ nodesRouter.post('/:mapId/nodes/batch', async (req, res, next) => {
     if (!await verifyMapAccess(mapId, getUserId(req))) {
       throw new AppError(404, 'Mind map not found');
     }
+
+    // Track history for batch operations
+    const historyOperations: BatchOperationResult[] = [];
 
     const results = await prisma.$transaction(async (tx) => {
       const operationResults: Array<{ type: string; nodeId: string; status: string }> = [];
@@ -215,7 +243,7 @@ nodesRouter.post('/:mapId/nodes/batch', async (req, res, next) => {
             });
 
             if (createData.parentId) {
-              await tx.connection.create({
+              const connection = await tx.connection.create({
                 data: {
                   mindMapId: mapId,
                   sourceNodeId: createData.parentId,
@@ -223,14 +251,27 @@ nodesRouter.post('/:mapId/nodes/batch', async (req, res, next) => {
                   type: 'HIERARCHICAL',
                 },
               });
+              historyOperations.push({
+                type: 'CREATE',
+                entityId: connection.id,
+                entityType: 'CONNECTION',
+                newState: connection,
+              });
             }
 
+            historyOperations.push({
+              type: 'CREATE',
+              entityId: node.id,
+              entityType: 'NODE',
+              newState: node,
+            });
             operationResults.push({ type: 'create', nodeId: node.id, status: 'ok' });
             break;
           }
 
           case 'update': {
             if (!op.nodeId) throw new AppError(400, 'nodeId required for update');
+            const previousNode = await tx.node.findUnique({ where: { id: op.nodeId } });
             const parsed = updateNodeSchema.parse(op.data);
             const nodeUpdateData: Prisma.NodeUpdateInput = {
               text: parsed.text,
@@ -244,9 +285,16 @@ nodesRouter.post('/:mapId/nodes/batch', async (req, res, next) => {
             if (parsed.style) {
               nodeUpdateData.style = parsed.style as Prisma.InputJsonValue;
             }
-            await tx.node.update({
+            const updatedNode = await tx.node.update({
               where: { id: op.nodeId },
               data: nodeUpdateData,
+            });
+            historyOperations.push({
+              type: 'UPDATE',
+              entityId: op.nodeId,
+              entityType: 'NODE',
+              previousState: previousNode,
+              newState: updatedNode,
             });
             operationResults.push({ type: 'update', nodeId: op.nodeId, status: 'ok' });
             break;
@@ -259,6 +307,12 @@ nodesRouter.post('/:mapId/nodes/batch', async (req, res, next) => {
               throw new AppError(400, 'Cannot delete root node');
             }
             await tx.node.delete({ where: { id: op.nodeId } });
+            historyOperations.push({
+              type: 'DELETE',
+              entityId: op.nodeId,
+              entityType: 'NODE',
+              previousState: node,
+            });
             operationResults.push({ type: 'delete', nodeId: op.nodeId, status: 'ok' });
             break;
           }
@@ -267,6 +321,9 @@ nodesRouter.post('/:mapId/nodes/batch', async (req, res, next) => {
 
       return operationResults;
     });
+
+    // Track all batch operations for history (after transaction completes)
+    await trackBatchOperations(req, mapId, historyOperations);
 
     res.json({
       success: true,
@@ -290,10 +347,27 @@ nodesRouter.put('/:mapId/nodes/:nodeId/position', async (req, res, next) => {
       throw new AppError(404, 'Mind map not found');
     }
 
+    // Get previous position for history
+    const previousNode = await prisma.node.findUnique({
+      where: { id: nodeId },
+      select: { positionX: true, positionY: true },
+    });
+
     await prisma.node.update({
       where: { id: nodeId },
       data: { positionX, positionY },
     });
+
+    // Track position change
+    if (previousNode) {
+      await trackNodeMove(
+        req,
+        mapId,
+        nodeId,
+        { positionX: previousNode.positionX, positionY: previousNode.positionY },
+        { positionX, positionY }
+      );
+    }
 
     res.json({ success: true });
   } catch (error) {

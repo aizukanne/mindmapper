@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Search, Loader2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Search, Loader2, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PersonCard } from './PersonCard';
 import { TreeControls } from './TreeControls';
@@ -7,8 +7,11 @@ import { useFamilyTreeLayout } from '@/hooks/useFamilyTreeLayout';
 import { useLinkedPerson } from '@/hooks/useLinkedPerson';
 import { useGenerations } from '@/hooks/useGenerations';
 import { useBranchIsolation } from '@/hooks/useBranchIsolation';
+import { usePersonCardDrag } from '@/hooks/usePersonCardDrag';
+import { useFamilyTreeStore, type ConnectionLineStyle } from '@/stores/familyTreeStore';
+import { generateConnectionPath, calculateEdgeEndpoints } from '@/lib/connection-paths';
 import type { Person, Relationship } from '@mindmapper/types';
-import type { LayoutEdge } from '@/lib/family-tree-layout';
+import type { LayoutEdge, LayoutNode } from '@/lib/family-tree-layout';
 
 export interface FamilyTreeCanvasProps {
   treeId: string;
@@ -40,11 +43,21 @@ export function FamilyTreeCanvas({
 }: FamilyTreeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [generationFilter, setGenerationFilter] = useState<[number, number] | null>(null);
+
+  // Family tree store for drag-and-drop and connection line styles
+  const {
+    connectionLineStyle,
+    setConnectionLineStyle,
+    customPositions,
+    isDragging: isCardDragging,
+    dragState,
+  } = useFamilyTreeStore();
 
   // Hooks for new features
   const {
@@ -113,22 +126,54 @@ export function FamilyTreeCanvas({
     compact,
   });
 
-  // Debug logging
-  console.log('[FamilyTreeCanvas] Debug:', {
-    peopleCount: people.length,
-    filteredPeopleCount: filteredPeople.length,
-    relationshipsCount: relationships.length,
-    filteredRelationshipsCount: filteredRelationships.length,
-    hasLayout: !!layout,
-    nodesCount: layout?.nodes.size ?? 0,
-    bounds: layout?.bounds,
-    generationFilter,
-    isIsolated,
+  // Drag-and-drop hook for person cards
+  const handlePositionChange = useCallback(async (personId: string, position: { x: number; y: number }) => {
+    // Position is already saved in store by the hook
+    // Optionally sync to API here
+  }, []);
+
+  const { onMouseDown: dragMouseDown, onTouchStart: dragTouchStart, shouldSuppressClick } = usePersonCardDrag({
+    treeId,
+    onPositionChange: handlePositionChange,
     viewState,
-    containerSize,
-    validNodesCount: layout ? Array.from(layout.nodes.values()).filter(n => Number.isFinite(n.x) && Number.isFinite(n.y)).length : 0,
-    sampleNode: layout && layout.nodes.size > 0 ? Array.from(layout.nodes.values())[0] : null,
+    // Allow cards to be dragged freely - no restrictive bounds
+    bounds: undefined,
   });
+
+  // Wrap click handlers to suppress clicks after dragging
+  const handlePersonClick = useCallback((person: Person) => {
+    if (shouldSuppressClick()) return;
+    onPersonClick?.(person);
+  }, [onPersonClick, shouldSuppressClick]);
+
+  const handlePersonDoubleClick = useCallback((person: Person) => {
+    if (shouldSuppressClick()) return;
+    onPersonDoubleClick?.(person);
+  }, [onPersonDoubleClick, shouldSuppressClick]);
+
+  // Get custom positions for this tree
+  const treeCustomPositions = customPositions[treeId] || {};
+
+  // Compute effective node positions (custom positions override layout positions)
+  const effectiveNodes = useMemo(() => {
+    if (!layout) return new Map<string, LayoutNode>();
+
+    const nodes = new Map<string, LayoutNode>();
+    for (const [id, node] of layout.nodes) {
+      const customPos = treeCustomPositions[id];
+
+      // Check if this node is being dragged
+      const isBeingDragged = isCardDragging && dragState?.personId === id;
+      const dragPosition = isBeingDragged ? dragState.currentPosition : null;
+
+      nodes.set(id, {
+        ...node,
+        x: dragPosition?.x ?? customPos?.x ?? node.x,
+        y: dragPosition?.y ?? customPos?.y ?? node.y,
+      });
+    }
+    return nodes;
+  }, [layout, treeCustomPositions, isCardDragging, dragState]);
 
   // Get selected person object
   const selectedPerson = useMemo(() => {
@@ -140,7 +185,6 @@ export function FamilyTreeCanvas({
   const handleFindMe = useCallback(() => {
     if (linkedPerson && containerSize.width > 0 && containerSize.height > 0) {
       centerOnPerson(linkedPerson.id, containerSize.width, containerSize.height);
-      // Also trigger person selection
       const person = people.find(p => p.id === linkedPerson.id);
       if (person) {
         onPersonClick?.(person);
@@ -202,25 +246,26 @@ export function FamilyTreeCanvas({
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left click
     if ((e.target as HTMLElement).closest('.person-card')) return;
+    if (isCardDragging) return; // Don't pan while dragging a card
 
-    setIsDragging(true);
-    setDragStart({ x: e.clientX - viewState.offsetX, y: e.clientY - viewState.offsetY });
-  }, [viewState.offsetX, viewState.offsetY]);
+    setIsPanning(true);
+    setPanStart({ x: e.clientX - viewState.offsetX, y: e.clientY - viewState.offsetY });
+  }, [viewState.offsetX, viewState.offsetY, isCardDragging]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isPanning || isCardDragging) return;
 
-    const newOffsetX = e.clientX - dragStart.x;
-    const newOffsetY = e.clientY - dragStart.y;
+    const newOffsetX = e.clientX - panStart.x;
+    const newOffsetY = e.clientY - panStart.y;
     setOffset(newOffsetX, newOffsetY);
-  }, [isDragging, dragStart, setOffset]);
+  }, [isPanning, panStart, setOffset, isCardDragging]);
 
   const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
+    setIsPanning(false);
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    setIsDragging(false);
+    setIsPanning(false);
   }, []);
 
   // Wheel event for zooming
@@ -265,50 +310,12 @@ export function FamilyTreeCanvas({
       spouseMap.set(rel.personToId, true);
     }
     if (rel.relationshipType === 'CHILD' || rel.relationshipType === 'PARENT') {
-      // personFromId is the parent
       childrenMap.set(rel.personFromId, true);
     }
   }
 
-  // Check if layout is valid and has nodes
-  // Debug: test Number.isFinite behavior
-  if (layout && layout.nodes.size > 0) {
-    const firstNode = Array.from(layout.nodes.values())[0];
-    console.log('[FamilyTreeCanvas] First node check:', {
-      x: firstNode.x,
-      y: firstNode.y,
-      xIsFinite: Number.isFinite(firstNode.x),
-      yIsFinite: Number.isFinite(firstNode.y),
-      xRaw: JSON.stringify(firstNode.x),
-      yRaw: JSON.stringify(firstNode.y),
-    });
-  }
-
   const hasValidNodes = layout && layout.nodes.size > 0 &&
     Array.from(layout.nodes.values()).some(n => Number.isFinite(n.x) && Number.isFinite(n.y));
-
-  // Extra debug for node issues
-  if (layout && layout.nodes.size > 0 && !hasValidNodes) {
-    const nodeDetails = Array.from(layout.nodes.values()).map(n => ({
-      id: n.id.slice(0, 8),
-      x: n.x,
-      y: n.y,
-      xType: typeof n.x,
-      yType: typeof n.y,
-      xFinite: Number.isFinite(n.x),
-      yFinite: Number.isFinite(n.y),
-    }));
-    console.warn('[FamilyTreeCanvas] Nodes exist but none have valid positions:', nodeDetails);
-  }
-
-  // Debug the actual condition being checked
-  console.log('[FamilyTreeCanvas] Render check:', {
-    hasLayout: !!layout,
-    peopleLength: people.length,
-    hasValidNodes,
-    nodesSize: layout?.nodes.size ?? 0,
-    shouldShowEmpty: !layout || people.length === 0 || !hasValidNodes,
-  });
 
   if (!layout || people.length === 0 || !hasValidNodes) {
     return (
@@ -322,11 +329,6 @@ export function FamilyTreeCanvas({
           <div className="text-center text-gray-500">
             <p className="text-lg font-medium">Unable to layout tree</p>
             <p className="text-sm">Try switching to Grid view</p>
-          </div>
-        ) : !hasValidNodes && layout && layout.nodes.size > 0 ? (
-          <div className="text-center text-gray-500">
-            <p className="text-lg font-medium">Layout has invalid node positions</p>
-            <p className="text-sm">Check console for details</p>
           </div>
         ) : (
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -366,7 +368,76 @@ export function FamilyTreeCanvas({
         >
           <Search className="w-4 h-4" />
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowSettings(!showSettings)}
+          title="Settings"
+        >
+          <Settings2 className="w-4 h-4" />
+        </Button>
       </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="absolute top-16 left-4 z-20 bg-white rounded-lg shadow-md p-3">
+          <h3 className="text-sm font-medium mb-2 text-gray-700">Line Style</h3>
+          <div className="flex gap-2">
+            {/* Straight line icon */}
+            <button
+              onClick={() => setConnectionLineStyle('straight')}
+              className={`p-2 rounded-lg border-2 transition-colors ${
+                connectionLineStyle === 'straight'
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+              title="Straight"
+            >
+              <svg width="32" height="32" viewBox="0 0 32 32" className="text-gray-600">
+                <circle cx="6" cy="8" r="3" fill="currentColor" opacity="0.3" />
+                <circle cx="26" cy="24" r="3" fill="currentColor" opacity="0.3" />
+                <line x1="6" y1="11" x2="26" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+
+            {/* Orthogonal line icon */}
+            <button
+              onClick={() => setConnectionLineStyle('orthogonal')}
+              className={`p-2 rounded-lg border-2 transition-colors ${
+                connectionLineStyle === 'orthogonal'
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+              title="Orthogonal"
+            >
+              <svg width="32" height="32" viewBox="0 0 32 32" className="text-gray-600">
+                <circle cx="6" cy="8" r="3" fill="currentColor" opacity="0.3" />
+                <circle cx="26" cy="24" r="3" fill="currentColor" opacity="0.3" />
+                <path d="M 6 11 L 6 16 Q 6 18 8 18 L 24 18 Q 26 18 26 20 L 26 21"
+                      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+
+            {/* Curved line icon */}
+            <button
+              onClick={() => setConnectionLineStyle('curved')}
+              className={`p-2 rounded-lg border-2 transition-colors ${
+                connectionLineStyle === 'curved'
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+              title="Curved"
+            >
+              <svg width="32" height="32" viewBox="0 0 32 32" className="text-gray-600">
+                <circle cx="6" cy="8" r="3" fill="currentColor" opacity="0.3" />
+                <circle cx="26" cy="24" r="3" fill="currentColor" opacity="0.3" />
+                <path d="M 6 11 C 6 18, 26 14, 26 21"
+                      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tree Controls (Find Me, Generation Filter, Branch Isolation) */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white rounded-lg shadow-md p-1">
@@ -490,36 +561,54 @@ export function FamilyTreeCanvas({
               </marker>
             </defs>
             {layout.edges.map(edge => (
-              <EdgePath key={edge.id} edge={edge} boundsMinX={layout.bounds.minX} boundsMinY={layout.bounds.minY} />
+              <EdgePath
+                key={edge.id}
+                edge={edge}
+                boundsMinX={layout.bounds.minX}
+                boundsMinY={layout.bounds.minY}
+                lineStyle={connectionLineStyle}
+                effectiveNodes={effectiveNodes}
+                nodeWidth={NODE_WIDTH}
+                nodeHeight={NODE_HEIGHT}
+              />
             ))}
           </svg>
 
           {/* Person Cards */}
-          {Array.from(layout.nodes.values())
+          {Array.from(effectiveNodes.values())
             .filter(node => Number.isFinite(node.x) && Number.isFinite(node.y))
-            .map(node => (
-            <div
-              key={node.id}
-              className="person-card"
-              style={{
-                position: 'absolute',
-                left: node.x,
-                top: node.y,
-              }}
-            >
-              <PersonCard
-                person={node.person}
-                width={node.width}
-                height={node.height}
-                isSelected={selectedPersonId === node.id}
-                isHighlighted={highlightedPersonIds.includes(node.id)}
-                hasSpouse={spouseMap.has(node.id)}
-                hasChildren={childrenMap.has(node.id)}
-                onClick={onPersonClick}
-                onDoubleClick={onPersonDoubleClick}
-              />
-            </div>
-          ))}
+            .map(node => {
+              const isDraggedCard = isCardDragging && dragState?.personId === node.id;
+              return (
+                <div
+                  key={node.id}
+                  className={`person-card ${isDraggedCard ? 'z-50' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    left: node.x,
+                    top: node.y,
+                    cursor: isDraggedCard ? 'grabbing' : 'grab',
+                    transition: isDraggedCard ? 'none' : 'box-shadow 0.2s ease',
+                    boxShadow: isDraggedCard ? '0 8px 25px rgba(0,0,0,0.25)' : undefined,
+                    transform: isDraggedCard ? 'scale(1.02)' : undefined,
+                  }}
+                  onMouseDown={(e) => dragMouseDown(e, node.id, { x: node.x, y: node.y })}
+                  onTouchStart={(e) => dragTouchStart(e, node.id, { x: node.x, y: node.y })}
+                >
+                  <PersonCard
+                    person={node.person}
+                    width={node.width}
+                    height={node.height}
+                    isSelected={selectedPersonId === node.id}
+                    isHighlighted={highlightedPersonIds.includes(node.id)}
+                    hasSpouse={spouseMap.has(node.id)}
+                    hasChildren={childrenMap.has(node.id)}
+                    onClick={handlePersonClick}
+                    onDoubleClick={handlePersonDoubleClick}
+                  />
+                </div>
+              );
+            })}
         </div>
       </div>
     </div>
@@ -531,31 +620,50 @@ interface EdgePathProps {
   edge: LayoutEdge;
   boundsMinX: number;
   boundsMinY: number;
+  lineStyle: ConnectionLineStyle;
+  effectiveNodes: Map<string, LayoutNode>;
+  nodeWidth: number;
+  nodeHeight: number;
 }
 
-function EdgePath({ edge, boundsMinX, boundsMinY }: EdgePathProps) {
-  const { points, type } = edge;
-  if (points.length < 2) return null;
+function EdgePath({ edge, boundsMinX, boundsMinY, lineStyle, effectiveNodes, nodeWidth, nodeHeight }: EdgePathProps) {
+  const { fromId, toId, type } = edge;
 
   // Skip if bounds are invalid
   if (!Number.isFinite(boundsMinX) || !Number.isFinite(boundsMinY)) return null;
 
+  // Get current node positions (may be custom/dragged positions)
+  const fromNode = effectiveNodes.get(fromId);
+  const toNode = effectiveNodes.get(toId);
+
+  if (!fromNode || !toNode) return null;
+  if (!Number.isFinite(fromNode.x) || !Number.isFinite(fromNode.y)) return null;
+  if (!Number.isFinite(toNode.x) || !Number.isFinite(toNode.y)) return null;
+
+  // Calculate edge endpoints based on relationship type and node positions
+  const endpoints = calculateEdgeEndpoints(
+    { x: fromNode.x, y: fromNode.y, width: nodeWidth, height: nodeHeight },
+    { x: toNode.x, y: toNode.y, width: nodeWidth, height: nodeHeight },
+    type
+  );
+
   // Adjust points relative to SVG origin
-  const adjustedPoints = points.map(p => ({
-    x: p.x - boundsMinX + 50,
-    y: p.y - boundsMinY + 50,
-  }));
+  const from = {
+    x: endpoints.from.x - boundsMinX + 50,
+    y: endpoints.from.y - boundsMinY + 50,
+  };
+  const to = {
+    x: endpoints.to.x - boundsMinX + 50,
+    y: endpoints.to.y - boundsMinY + 50,
+  };
 
-  // Skip if any point has invalid coordinates
-  if (adjustedPoints.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
-    return null;
-  }
-
-  // Build path
-  let pathD = `M ${adjustedPoints[0].x} ${adjustedPoints[0].y}`;
-  for (let i = 1; i < adjustedPoints.length; i++) {
-    pathD += ` L ${adjustedPoints[i].x} ${adjustedPoints[i].y}`;
-  }
+  // Generate path based on line style
+  const pathD = generateConnectionPath(from, to, {
+    style: lineStyle,
+    type,
+    curveTension: 0.5,
+    cornerRadius: 10,
+  });
 
   const strokeColor = type === 'spouse' ? '#EC4899' : type === 'sibling' ? '#8B5CF6' : '#9CA3AF';
   const strokeWidth = type === 'spouse' ? 2 : 1.5;
@@ -563,6 +671,7 @@ function EdgePath({ edge, boundsMinX, boundsMinY }: EdgePathProps) {
 
   return (
     <path
+      data-testid={`relationship-line-${edge.type}`}
       d={pathD}
       fill="none"
       stroke={strokeColor}

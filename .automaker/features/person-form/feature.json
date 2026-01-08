@@ -1,0 +1,17 @@
+{
+  "id": "person-form",
+  "category": "UI",
+  "title": "Person Edit Form",
+  "description": "Create comprehensive form for editing person details: names, dates, places, biography, occupation with validation and privacy settings.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "complex",
+  "dependencies": [
+    "person-api",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.263Z",
+  "updatedAt": "2026-01-07T03:37:30.028Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:28:52.303Z"
+}

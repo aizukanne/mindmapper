@@ -1,0 +1,16 @@
+{
+  "id": "import-json-parser",
+  "category": "Core",
+  "title": "JSON Import Parser",
+  "description": "Create parser for MindMapper JSON format and simple generic JSON. Validate structure and convert to internal format.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "map-editor-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.260Z",
+  "updatedAt": "2026-01-07T06:48:53.721Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:47:49.268Z"
+}

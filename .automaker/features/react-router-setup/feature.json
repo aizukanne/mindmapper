@@ -1,0 +1,16 @@
+{
+  "id": "react-router-setup",
+  "category": "Core",
+  "title": "React Router Configuration",
+  "description": "Install and configure React Router v6 with routes for dashboard, map editor, authentication pages, and 404 handling.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "vite-react-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.239Z",
+  "updatedAt": "2026-01-07T02:31:00.997Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T02:30:06.911Z"
+}

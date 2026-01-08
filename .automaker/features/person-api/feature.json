@@ -1,0 +1,17 @@
+{
+  "id": "person-api",
+  "category": "API",
+  "title": "Person Management API",
+  "description": "Create endpoints for person CRUD operations with biographical data, validation for dates and relationships, privacy checks.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "family-tree-schema",
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.262Z",
+  "updatedAt": "2026-01-07T01:28:24.291Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T01:16:23.754Z"
+}

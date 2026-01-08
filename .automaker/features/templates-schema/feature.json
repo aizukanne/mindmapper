@@ -1,0 +1,16 @@
+{
+  "id": "templates-schema",
+  "category": "Database",
+  "title": "Templates Database Schema",
+  "description": "Create Prisma schema for Template model with category, public/private flag, creator reference, and template data structure.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "mind-map-schema"
+  ],
+  "createdAt": "2026-01-07T00:20:10.253Z",
+  "updatedAt": "2026-01-07T08:23:26.194Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T08:15:40.715Z"
+}

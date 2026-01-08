@@ -1,0 +1,16 @@
+{
+  "id": "export-pdf",
+  "category": "Core",
+  "title": "Export to PDF",
+  "description": "Trigger browser print dialog with optimized CSS for PDF export. Support landscape orientation and multiple pages.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "simple",
+  "dependencies": [
+    "map-editor-page"
+  ],
+  "createdAt": "2026-01-07T00:20:10.259Z",
+  "updatedAt": "2026-01-07T05:33:06.780Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T05:25:07.254Z"
+}

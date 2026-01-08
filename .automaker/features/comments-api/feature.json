@@ -1,0 +1,17 @@
+{
+  "id": "comments-api",
+  "category": "API",
+  "title": "Comments API Endpoints",
+  "description": "Create endpoints for creating, listing, updating, and deleting comments. Support threading, resolution, and filtering by node.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "comments-schema",
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.250Z",
+  "updatedAt": "2026-01-07T04:24:34.146Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T04:22:07.254Z"
+}

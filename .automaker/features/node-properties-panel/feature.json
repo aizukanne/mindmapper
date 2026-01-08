@@ -1,0 +1,17 @@
+{
+  "id": "node-properties-panel",
+  "category": "UI",
+  "title": "Node Properties Panel",
+  "description": "Create sidebar panel for editing selected node properties: text, color, font size, background, border. Update in real-time.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "custom-node-component",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.247Z",
+  "updatedAt": "2026-01-07T07:14:12.762Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:09:01.300Z"
+}

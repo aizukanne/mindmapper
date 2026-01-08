@@ -6,6 +6,7 @@ export interface NodeStyle {
   borderColor: string;
   borderWidth: number;
   borderRadius: number;
+  borderStyle: 'solid' | 'dashed' | 'dotted';
   textColor: string;
   fontSize: number;
   fontWeight: 'normal' | 'bold';
@@ -133,7 +134,7 @@ export interface Comment {
 }
 
 // Event Types (for history)
-export type EventType =
+export type MapEventType =
   | 'CREATE_NODE'
   | 'UPDATE_NODE'
   | 'DELETE_NODE'
@@ -141,20 +142,36 @@ export type EventType =
   | 'CREATE_CONNECTION'
   | 'UPDATE_CONNECTION'
   | 'DELETE_CONNECTION'
-  | 'UPDATE_MAP';
+  | 'UPDATE_MAP'
+  | 'RESTORE';
 
-export type EntityType = 'NODE' | 'CONNECTION' | 'MAP';
+export type MapEntityType = 'NODE' | 'CONNECTION' | 'MAP';
+
+// Legacy aliases for backwards compatibility
+export type EventType = MapEventType;
+export type EntityType = MapEntityType;
 
 export interface MapEvent {
   id: string;
   mindMapId: string;
   userId: string;
-  eventType: EventType;
-  entityType: EntityType;
+  eventType: MapEventType;
+  entityType: MapEntityType;
   entityId: string;
+  description?: string | null;
   previousState?: Record<string, unknown> | null;
   newState?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
   createdAt: Date;
+}
+
+export interface MapEventWithUser extends MapEvent {
+  user: {
+    id: string;
+    name: string | null;
+    email: string;
+    avatarUrl: string | null;
+  };
 }
 
 // Folder Types
@@ -163,7 +180,9 @@ export interface Folder {
   name: string;
   parentId?: string | null;
   userId: string;
+  order: number;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 // Template Types
@@ -216,6 +235,137 @@ export interface CollaborationState {
   users: UserPresence[];
 }
 
+// ==========================================
+// Awareness Protocol Types
+// ==========================================
+
+/**
+ * Activity status for user presence
+ * - active: User is actively interacting (mouse/keyboard within last 10 seconds)
+ * - idle: User hasn't interacted for 10-60 seconds
+ * - away: User hasn't interacted for over 60 seconds
+ */
+export type ActivityStatus = 'active' | 'idle' | 'away';
+
+/**
+ * Viewport information for tracking what area of canvas a user is viewing
+ */
+export interface Viewport {
+  x: number;          // Pan X position
+  y: number;          // Pan Y position
+  zoom: number;       // Zoom level (1 = 100%)
+  width: number;      // Viewport width in pixels
+  height: number;     // Viewport height in pixels
+}
+
+/**
+ * Cursor position with additional metadata
+ */
+export interface CursorPosition {
+  x: number;          // Screen X coordinate
+  y: number;          // Screen Y coordinate
+  canvasX?: number;   // Canvas X coordinate (accounting for pan/zoom)
+  canvasY?: number;   // Canvas Y coordinate (accounting for pan/zoom)
+}
+
+/**
+ * Core awareness state that is broadcast to all users in a room
+ * This is the structure that gets serialized and sent via the awareness protocol
+ */
+export interface AwarenessState {
+  // User identification
+  userId: string;
+  userName: string;
+  userColor: string;
+  avatarUrl?: string;
+
+  // Cursor tracking
+  cursor: CursorPosition | null;
+
+  // Selection tracking
+  selectedNodeIds: string[];      // Support for multi-selection
+
+  // Viewport tracking (what area of canvas user is viewing)
+  viewport: Viewport | null;
+
+  // Activity tracking
+  activityStatus: ActivityStatus;
+  lastActiveAt: number;           // Unix timestamp of last activity
+
+  // Editing state
+  isEditingNodeId: string | null; // Node being text-edited by user
+
+  // Client metadata
+  clientId: number;               // Yjs client ID
+  connectedAt: number;            // Unix timestamp when user connected
+}
+
+/**
+ * Awareness state update payload for partial updates
+ */
+export interface AwarenessStateUpdate {
+  cursor?: CursorPosition | null;
+  selectedNodeIds?: string[];
+  viewport?: Viewport | null;
+  activityStatus?: ActivityStatus;
+  lastActiveAt?: number;
+  isEditingNodeId?: string | null;
+}
+
+/**
+ * Awareness protocol configuration options
+ */
+export interface AwarenessConfig {
+  // Timing configuration (in milliseconds)
+  cursorThrottleMs: number;       // Min time between cursor updates (default: 50ms)
+  viewportThrottleMs: number;     // Min time between viewport updates (default: 200ms)
+  activityPollMs: number;         // How often to check activity status (default: 5000ms)
+
+  // Activity status thresholds (in milliseconds)
+  idleThresholdMs: number;        // Time until 'idle' status (default: 10000ms)
+  awayThresholdMs: number;        // Time until 'away' status (default: 60000ms)
+
+  // Expiration
+  staleTimeoutMs: number;         // Remove user after this time of no updates (default: 30000ms)
+}
+
+/**
+ * Default awareness protocol configuration
+ */
+export const DEFAULT_AWARENESS_CONFIG: AwarenessConfig = {
+  cursorThrottleMs: 50,
+  viewportThrottleMs: 200,
+  activityPollMs: 5000,
+  idleThresholdMs: 10000,
+  awayThresholdMs: 60000,
+  staleTimeoutMs: 30000,
+};
+
+/**
+ * Event types emitted by the awareness protocol
+ */
+export type AwarenessEventType =
+  | 'user-joined'
+  | 'user-left'
+  | 'user-updated'
+  | 'cursor-moved'
+  | 'selection-changed'
+  | 'viewport-changed'
+  | 'activity-changed'
+  | 'editing-started'
+  | 'editing-stopped';
+
+/**
+ * Awareness event payload
+ */
+export interface AwarenessEvent {
+  type: AwarenessEventType;
+  userId: string;
+  state: AwarenessState;
+  previousState?: AwarenessState;
+  timestamp: number;
+}
+
 // Yjs Types
 export interface YjsNodeData {
   id: string;
@@ -247,6 +397,7 @@ export const DEFAULT_NODE_STYLE: NodeStyle = {
   borderColor: '#d1d5db',
   borderWidth: 1,
   borderRadius: 8,
+  borderStyle: 'solid',
   textColor: '#1f2937',
   fontSize: 14,
   fontWeight: 'normal',
@@ -521,4 +672,116 @@ export interface PersonWithRelationships extends Person {
 export interface FamilyTreeWithMembers extends FamilyTree {
   members?: TreeMember[];
   people?: Person[];
+}
+
+// ==========================================
+// Export/Import Types (v1.1)
+// ==========================================
+
+/**
+ * Exported node structure for JSON export
+ */
+export interface ExportedNode {
+  id: string;
+  text: string;
+  type: NodeType;
+  parentId: string | null;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  style: Partial<NodeStyle>;
+  metadata: Record<string, unknown>;
+  isCollapsed: boolean;
+  sortOrder: number;
+}
+
+/**
+ * Exported connection structure for JSON export
+ */
+export interface ExportedConnection {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  type: ConnectionType;
+  label: string | null;
+  style: Partial<ConnectionStyle>;
+}
+
+/**
+ * Exported comment structure for JSON export (v1.1+)
+ */
+export interface ExportedComment {
+  id: string;
+  nodeId: string | null;
+  text: string;
+  resolved: boolean;
+  parentId: string | null;
+  createdAt: string;
+  author?: {
+    name: string | null;
+    email: string;
+  };
+}
+
+/**
+ * Full export format for MindMapper JSON (v1.1)
+ * This format is re-importable and preserves all map data
+ */
+export interface MindMapperExport {
+  /** Format version (currently '1.1') */
+  version: string;
+  /** ISO timestamp of when the export was created */
+  exportedAt: string;
+  /** Format identifier - always 'mindmapper-json' */
+  format: 'mindmapper-json';
+  /** JSON schema reference for validation */
+  schema: string;
+  /** Map metadata and settings */
+  map: {
+    id: string;
+    title: string;
+    description: string | null;
+    isPublic: boolean;
+    isFavorite: boolean;
+    settings: Partial<MindMapSettings>;
+    createdAt: string;
+    updatedAt: string;
+    author?: {
+      name: string | null;
+      email: string;
+    };
+  };
+  /** All nodes in the map */
+  nodes: ExportedNode[];
+  /** All connections between nodes */
+  connections: ExportedConnection[];
+  /** Comments on the map (optional) */
+  comments?: ExportedComment[];
+  /** Export metadata for quick overview */
+  metadata: {
+    nodeCount: number;
+    connectionCount: number;
+    commentCount: number;
+    exportedBy?: string;
+  };
+}
+
+/**
+ * Import result structure
+ */
+export interface ImportResult {
+  id: string;
+  title: string;
+  nodeCount: number;
+  connectionCount: number;
+  commentCount?: number;
+}
+
+/**
+ * Format detection result
+ */
+export interface FormatDetectionResult {
+  format: string;
+  confidence: number;
+  details: Record<string, unknown>;
+  supported: boolean;
 }

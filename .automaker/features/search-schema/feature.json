@@ -1,0 +1,16 @@
+{
+  "id": "search-schema",
+  "category": "Database",
+  "title": "Full-Text Search Schema",
+  "description": "Add full-text search indexes to PostgreSQL for map titles, descriptions, and node content. Configure search weights and ranking.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [
+    "mind-map-schema"
+  ],
+  "createdAt": "2026-01-07T00:20:10.257Z",
+  "updatedAt": "2026-01-07T07:46:43.468Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:36:43.331Z"
+}

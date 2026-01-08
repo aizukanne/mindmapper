@@ -1,0 +1,16 @@
+{
+  "id": "folder-drag-drop",
+  "category": "UI",
+  "title": "Drag-and-Drop Folder Organization",
+  "description": "Enable drag-and-drop to move maps between folders and reorder folders. Provide visual feedback during dragging.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "folder-tree-component"
+  ],
+  "createdAt": "2026-01-07T00:20:10.256Z",
+  "updatedAt": "2026-01-07T06:14:39.995Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T06:04:13.321Z"
+}

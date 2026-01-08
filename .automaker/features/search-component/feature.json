@@ -1,0 +1,17 @@
+{
+  "id": "search-component",
+  "category": "UI",
+  "title": "Global Search Component",
+  "description": "Create command palette-style search with Ctrl+K shortcut. Show recent searches, suggestions, and categorized results with keyboard navigation.",
+  "status": "verified",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [
+    "search-api",
+    "shadcn-ui-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.258Z",
+  "updatedAt": "2026-01-07T07:58:35.724Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T07:52:37.303Z"
+}

@@ -96,6 +96,7 @@ function PersonCardComponent({
 
   return (
     <div
+      data-testid={`person-card-${person.id}`}
       className={`
         rounded-lg border-2 shadow-sm cursor-pointer transition-all duration-200
         ${generationColor}
@@ -111,6 +112,15 @@ function PersonCardComponent({
       onDoubleClick={handleDoubleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      role="button"
+      tabIndex={0}
+      aria-label={`${displayName}${lifespan ? `, ${lifespan}` : ''}${!person.isLiving ? ', deceased' : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
     >
       <div className="flex h-full p-2 gap-2">
         {/* Photo */}
@@ -131,34 +141,38 @@ function PersonCardComponent({
         {/* Info */}
         <div className="flex-1 min-w-0 flex flex-col justify-center">
           <div className="flex items-center gap-1">
-            <h3 className="text-sm font-semibold text-gray-900 truncate" title={displayName}>
+            <h3
+              data-testid="person-card-name"
+              className="text-sm font-semibold text-gray-900 truncate"
+              title={displayName}
+            >
               {person.firstName} {person.lastName}
             </h3>
             {getPrivacyIcon(person.privacy)}
           </div>
 
           {person.maidenName && (
-            <p className="text-xs text-gray-500 truncate">née {person.maidenName}</p>
+            <p data-testid="person-card-maiden-name" className="text-xs text-gray-500 truncate">née {person.maidenName}</p>
           )}
 
           {lifespan && (
-            <p className="text-xs text-gray-600 mt-0.5">{lifespan}</p>
+            <p data-testid="person-card-lifespan" className="text-xs text-gray-600 mt-0.5">{lifespan}</p>
           )}
 
           {/* Relationship indicators */}
-          <div className="flex items-center gap-1 mt-1">
+          <div data-testid="person-card-indicators" className="flex items-center gap-1 mt-1">
             {hasSpouse && (
-              <span title="Has spouse">
+              <span data-testid="person-card-spouse-indicator" title="Has spouse">
                 <Heart className="w-3 h-3 text-rose-500" />
               </span>
             )}
             {hasChildren && (
-              <span title="Has children">
+              <span data-testid="person-card-children-indicator" title="Has children">
                 <Baby className="w-3 h-3 text-blue-500" />
               </span>
             )}
             {!person.isLiving && (
-              <span className="text-xs text-gray-400">†</span>
+              <span data-testid="person-card-deceased-indicator" className="text-xs text-gray-400">†</span>
             )}
           </div>
         </div>

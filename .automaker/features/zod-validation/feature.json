@@ -1,0 +1,16 @@
+{
+  "id": "zod-validation",
+  "category": "API",
+  "title": "Zod Input Validation",
+  "description": "Install Zod and create validation schemas for API endpoints. Implement middleware to validate request bodies and query parameters.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.238Z",
+  "updatedAt": "2026-01-07T03:59:04.859Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T03:58:19.628Z"
+}

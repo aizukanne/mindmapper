@@ -1,0 +1,16 @@
+{
+  "id": "mind-map-schema",
+  "category": "Database",
+  "title": "Mind Map Database Schema",
+  "description": "Define Prisma schema for MindMap, Node, Connection models with relationships. Include fields for title, description, owner, permissions, and timestamps.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [
+    "prisma-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.237Z",
+  "updatedAt": "2026-01-07T00:57:38.404Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T00:53:41.770Z"
+}

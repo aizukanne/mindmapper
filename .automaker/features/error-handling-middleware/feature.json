@@ -1,0 +1,16 @@
+{
+  "id": "error-handling-middleware",
+  "category": "API",
+  "title": "Error Handling Middleware",
+  "description": "Create centralized error handling middleware for Express. Return consistent error responses with proper status codes and messages.",
+  "status": "verified",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [
+    "express-api-setup"
+  ],
+  "createdAt": "2026-01-07T00:20:10.238Z",
+  "updatedAt": "2026-01-07T01:40:38.592Z",
+  "branchName": "feature/family-tree",
+  "startedAt": "2026-01-07T01:39:59.698Z"
+}
