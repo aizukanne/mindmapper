@@ -7,6 +7,7 @@ import {
   checkTreeAccess,
   enforceMemberRelationshipRestrictions,
 } from '../lib/permissions.js';
+import { invalidateTreeCache } from './relationship-compute.js';
 
 export const relationshipsRouter = Router();
 
@@ -677,6 +678,9 @@ relationshipsRouter.post('/', asyncHandler(async (req, res) => {
     return relationship;
   });
 
+  // Invalidate computed relationship cache for this tree
+  invalidateTreeCache(personFrom.treeId);
+
   res.status(201).json({
     success: true,
     data: result,
@@ -815,6 +819,9 @@ relationshipsRouter.put('/:relationshipId', asyncHandler(async (req, res) => {
     return updated;
   });
 
+  // Invalidate computed relationship cache for this tree
+  invalidateTreeCache(relationship.treeId);
+
   res.json({
     success: true,
     data: updatedRelationship,
@@ -852,6 +859,9 @@ relationshipsRouter.delete('/:relationshipId', asyncHandler(async (req, res) => 
       },
     }),
   ]);
+
+  // Invalidate computed relationship cache for this tree
+  invalidateTreeCache(relationship.treeId);
 
   res.json({
     success: true,
@@ -1028,6 +1038,9 @@ relationshipsRouter.post('/bulk', asyncHandler(async (req, res) => {
 
     return results;
   });
+
+  // Invalidate computed relationship cache for this tree
+  invalidateTreeCache(treeId);
 
   res.status(201).json({
     success: true,

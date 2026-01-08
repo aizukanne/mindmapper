@@ -33,6 +33,7 @@ import { storageRouter } from './routes/storage.js';
 import { photosRouter } from './routes/photos.js';
 import { usersRouter } from './routes/users.js';
 import { shareableLinksRouter } from './routes/shareableLinks.js';
+import { relationshipComputeRouter } from './routes/relationship-compute.js';
 import { setupYjsServer } from './yjs/server.js';
 import { connectRedis, disconnectRedis, getRedisStatus, isRedisHealthy } from './lib/redis.js';
 import { flushAllPending } from './yjs/persistence.js';
@@ -93,6 +94,7 @@ app.use('/api/storage', storageRouter);
 app.use('/api/photos', photosRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/shareable-links', shareableLinksRouter);
+app.use('/api/family-trees', relationshipComputeRouter);
 
 // 404 handler for unmatched routes (must be before error handler)
 app.use(notFoundHandler);

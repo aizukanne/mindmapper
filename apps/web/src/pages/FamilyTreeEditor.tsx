@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, UserX, Image, Upload, Edit2, LayoutGrid, GitBranch, ImageIcon, Wrench, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Users, Settings, Loader2, UserPlus, Link as LinkIcon, X, Heart, User, Baby, Home, Shield, Lock, Eye, Download, Trash2, UserX, Image, Upload, Edit2, LayoutGrid, GitBranch, ImageIcon, Wrench, AlertTriangle, Search } from 'lucide-react';
 import { useAuth } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/auth/UserMenu';
@@ -9,6 +9,8 @@ import { MemberManagementModal } from '@/components/family-tree/MemberManagement
 import { PhotoPrivacySettings } from '@/components/tree/PhotoPrivacySettings';
 import { FamilyTreeCanvas } from '@/components/tree/FamilyTreeCanvas';
 import { PhotoGallery } from '@/components/tree/PhotoGallery';
+import { HowAreWeRelatedModal } from '@/components/family-tree/HowAreWeRelatedModal';
+import { RelationshipSearchModal } from '@/components/family-tree/RelationshipSearchModal';
 import { calculateAge } from '@/lib/dateUtils';
 import type { FamilyTree, Person, Relationship, RelationshipType, TreeRole, TreePhoto } from '@mindmapper/types';
 
@@ -68,6 +70,8 @@ export default function FamilyTreeEditor() {
   const [isAddSiblingModalOpen, setIsAddSiblingModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'canvas' | 'grid' | 'photos'>('canvas');
   const [isMissingParentsModalOpen, setIsMissingParentsModalOpen] = useState(false);
+  const [isHowRelatedModalOpen, setIsHowRelatedModalOpen] = useState(false);
+  const [isRelationshipSearchModalOpen, setIsRelationshipSearchModalOpen] = useState(false);
 
   // Get user's role in this tree (use server-computed values if available)
   const userRole = tree?._currentUser?.role || null;
@@ -354,6 +358,31 @@ export default function FamilyTreeEditor() {
               Photos
             </Button>
           </div>
+          {/* Relationship Search Tools */}
+          {tree.people.length >= 2 && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRelationshipSearchModalOpen(true)}
+                className="flex items-center gap-1.5"
+                title="Find relatives by relationship type"
+              >
+                <Search className="w-4 h-4" />
+                Find Relatives
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsHowRelatedModalOpen(true)}
+                className="flex items-center gap-1.5"
+                title="See how two people are related"
+              >
+                <GitBranch className="w-4 h-4" />
+                How Related?
+              </Button>
+            </>
+          )}
           {permissions.canAddPeople && (
             <Button
               onClick={() => setIsAddPersonModalOpen(true)}
@@ -564,6 +593,7 @@ export default function FamilyTreeEditor() {
           canAddAncestors={permissions.canAddAncestors}
           canAddDescendants={permissions.canAddDescendants}
           canEditPeople={permissions.canEditPeople}
+          canDeleteRelationships={permissions.canDeleteRelationships}
         />
       )}
 
@@ -648,6 +678,34 @@ export default function FamilyTreeEditor() {
             const person = tree.people.find(p => p.id === personId);
             if (person) {
               setSelectedPerson(person);
+            }
+          }}
+        />
+      )}
+
+      {/* How Are We Related Modal */}
+      {isHowRelatedModalOpen && tree && (
+        <HowAreWeRelatedModal
+          treeId={tree.id}
+          people={tree.people}
+          initialPersonA={selectedPerson || undefined}
+          onClose={() => setIsHowRelatedModalOpen(false)}
+        />
+      )}
+
+      {/* Relationship Search Modal */}
+      {isRelationshipSearchModalOpen && tree && (
+        <RelationshipSearchModal
+          treeId={tree.id}
+          people={tree.people}
+          initialPerson={selectedPerson || undefined}
+          onClose={() => setIsRelationshipSearchModalOpen(false)}
+          onPersonSelect={(person) => {
+            // Find the full person data and open their detail modal
+            const fullPerson = tree.people.find(p => p.id === person.id);
+            if (fullPerson) {
+              setSelectedPerson(fullPerson);
+              setIsRelationshipSearchModalOpen(false);
             }
           }}
         />
@@ -956,12 +1014,15 @@ interface PersonDetailModalProps {
   canAddAncestors: boolean;
   canAddDescendants: boolean;
   canEditPeople: boolean;
+  canDeleteRelationships: boolean;
 }
 
-function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChild, onAddSpouse, onAddSibling, onRefresh, canAddRelationships, canAddAncestors, canAddDescendants, canEditPeople }: PersonDetailModalProps) {
+function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChild, onAddSpouse, onAddSibling, onRefresh, canAddRelationships, canAddAncestors, canAddDescendants, canEditPeople, canDeleteRelationships }: PersonDetailModalProps) {
   const [updatingPrivacy, setUpdatingPrivacy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingRelationship, setDeletingRelationship] = useState<string | null>(null);
+  const [editingRelationship, setEditingRelationship] = useState<Relationship | null>(null);
   const [photos, setPhotos] = useState<TreePhoto[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<TreePhoto | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -1223,6 +1284,37 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
     }
   };
 
+  const handleDeleteRelationship = async (relationshipId: string, relatedPersonName: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to remove the relationship with ${relatedPersonName}?\n\n` +
+      `This will delete both directions of this relationship.\n\n` +
+      `This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingRelationship(relationshipId);
+    try {
+      const response = await fetch(`${API_URL}/api/relationships/${relationshipId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        onRefresh();
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to delete relationship');
+      }
+    } catch (error) {
+      console.error('Failed to delete relationship:', error);
+      alert('Failed to delete relationship');
+    } finally {
+      setDeletingRelationship(null);
+    }
+  };
+
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1290,9 +1382,27 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
   }, [person.id]);
 
   const getRelationships = () => {
-    return tree.relationships.filter(
+    // Get all relationships involving this person
+    const allRels = tree.relationships.filter(
       (rel) => rel.personFromId === person.id || rel.personToId === person.id
     );
+
+    // Deduplicate by related person to avoid showing the same person twice
+    // For bidirectional relationships (like siblings), both A→B and B→A exist
+    // We only want to show each related person once
+    const seenRelatedPersons = new Map<string, Relationship>();
+
+    for (const rel of allRels) {
+      const relatedPersonId = rel.personFromId === person.id ? rel.personToId : rel.personFromId;
+
+      // If we haven't seen this related person, or if this is the "outgoing" direction
+      // (where current person is personFromId), prefer it
+      if (!seenRelatedPersons.has(relatedPersonId) || rel.personFromId === person.id) {
+        seenRelatedPersons.set(relatedPersonId, rel);
+      }
+    }
+
+    return Array.from(seenRelatedPersons.values());
   };
 
   const getRelatedPerson = (relationship: Relationship) => {
@@ -1303,21 +1413,47 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
   };
 
   const getRelationshipLabel = (relationship: Relationship) => {
+    const relatedPerson = getRelatedPerson(relationship);
+    const relatedGender = relatedPerson?.gender || 'UNKNOWN';
+
+    // Helper to get gender-specific parent label
+    const getParentLabel = (prefix: string = '') => {
+      if (relatedGender === 'MALE') return prefix ? `${prefix} Father` : 'Father';
+      if (relatedGender === 'FEMALE') return prefix ? `${prefix} Mother` : 'Mother';
+      return prefix ? `${prefix} Parent` : 'Parent';
+    };
+
     if (relationship.personFromId === person.id) {
-      return relationship.relationshipType.replace('_', ' ');
-    } else {
-      // Reverse relationship
+      // Outgoing relationship - this person is the "from"
       const type = relationship.relationshipType;
-      if (type === 'PARENT') return 'CHILD';
-      if (type === 'CHILD') return 'PARENT';
-      if (type === 'ADOPTIVE_PARENT') return 'ADOPTIVE_CHILD';
-      if (type === 'ADOPTIVE_CHILD') return 'ADOPTIVE_PARENT';
-      if (type === 'STEP_PARENT') return 'STEP_CHILD';
-      if (type === 'STEP_CHILD') return 'STEP_PARENT';
-      if (type === 'FOSTER_PARENT') return 'FOSTER_CHILD';
-      if (type === 'FOSTER_CHILD') return 'FOSTER_PARENT';
-      if (type === 'GUARDIAN') return 'WARD';
-      if (type === 'WARD') return 'GUARDIAN';
+      // For CHILD-type relationships, this person is the parent of the related person
+      // For PARENT-type relationships, this person is the child of the related person
+      if (type === 'CHILD') return 'Child';
+      if (type === 'PARENT') return getParentLabel();
+      if (type === 'ADOPTIVE_CHILD') return 'Adoptive Child';
+      if (type === 'ADOPTIVE_PARENT') return getParentLabel('Adoptive');
+      if (type === 'STEP_CHILD') return 'Step Child';
+      if (type === 'STEP_PARENT') return getParentLabel('Step');
+      if (type === 'FOSTER_CHILD') return 'Foster Child';
+      if (type === 'FOSTER_PARENT') return getParentLabel('Foster');
+      if (type === 'GUARDIAN') return 'Guardian';
+      if (type === 'WARD') return 'Ward';
+      return type.replace('_', ' ');
+    } else {
+      // Reverse relationship - this person is the "to"
+      const type = relationship.relationshipType;
+      // For CHILD-type relationships, this person is the child, related person is parent
+      // For PARENT-type relationships, this person is the parent, related person is child
+      if (type === 'PARENT') return 'Child';
+      if (type === 'CHILD') return getParentLabel();
+      if (type === 'ADOPTIVE_PARENT') return 'Adoptive Child';
+      if (type === 'ADOPTIVE_CHILD') return getParentLabel('Adoptive');
+      if (type === 'STEP_PARENT') return 'Step Child';
+      if (type === 'STEP_CHILD') return getParentLabel('Step');
+      if (type === 'FOSTER_PARENT') return 'Foster Child';
+      if (type === 'FOSTER_CHILD') return getParentLabel('Foster');
+      if (type === 'GUARDIAN') return 'Ward';
+      if (type === 'WARD') return 'Guardian';
       return type.replace('_', ' ');
     }
   };
@@ -1326,7 +1462,7 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
     const lowerType = type.toLowerCase();
     if (lowerType.includes('spouse')) return <Heart className="w-4 h-4 text-red-500" />;
     if (lowerType.includes('child') || lowerType === 'ward') return <Baby className="w-4 h-4 text-blue-500" />;
-    if (lowerType.includes('parent') || lowerType === 'guardian') return <User className="w-4 h-4 text-green-500" />;
+    if (lowerType.includes('parent') || lowerType.includes('father') || lowerType.includes('mother') || lowerType === 'guardian') return <User className="w-4 h-4 text-green-500" />;
     if (lowerType.includes('sibling')) return <Users className="w-4 h-4 text-purple-500" />;
     return <Home className="w-4 h-4 text-gray-500" />;
   };
@@ -1335,6 +1471,8 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
     const lowerType = type.toLowerCase();
     if (lowerType.includes('spouse')) return 'bg-red-100 text-red-700 border-red-200';
     if (lowerType.includes('child') || lowerType === 'ward') return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (lowerType.includes('father')) return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (lowerType.includes('mother')) return 'bg-pink-100 text-pink-700 border-pink-200';
     if (lowerType.includes('parent') || lowerType === 'guardian') return 'bg-green-100 text-green-700 border-green-200';
     if (lowerType.includes('sibling')) return 'bg-purple-100 text-purple-700 border-purple-200';
     if (lowerType.includes('adoptive')) return 'bg-orange-100 text-orange-700 border-orange-200';
@@ -1345,10 +1483,10 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
 
   const relationships = getRelationships();
 
-  // Check if person already has parents
+  // Check if person already has parents (father, mother, or generic parent)
   const hasParents = relationships.some(rel => {
     const label = getRelationshipLabel(rel).toLowerCase();
-    return label.includes('parent');
+    return label.includes('parent') || label.includes('father') || label.includes('mother');
   });
 
   return (
@@ -2063,10 +2201,11 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                       const relatedPerson = getRelatedPerson(rel);
                       if (!relatedPerson) return acc;
                       const label = getRelationshipLabel(rel);
-                      const category = label.toLowerCase().includes('parent') ? 'Parents' :
-                                      label.toLowerCase().includes('child') ? 'Children' :
-                                      label.toLowerCase().includes('spouse') ? 'Spouses' :
-                                      label.toLowerCase().includes('sibling') ? 'Siblings' :
+                      const lowerLabel = label.toLowerCase();
+                      const category = (lowerLabel.includes('parent') || lowerLabel.includes('father') || lowerLabel.includes('mother')) ? 'Parents' :
+                                      lowerLabel.includes('child') ? 'Children' :
+                                      lowerLabel.includes('spouse') ? 'Spouses' :
+                                      lowerLabel.includes('sibling') ? 'Siblings' :
                                       'Other';
                       if (!acc[category]) acc[category] = [];
                       acc[category].push({ rel, relatedPerson, label });
@@ -2101,7 +2240,7 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                             {grouped[category].map(({ rel, relatedPerson, label }) => (
                               <div
                                 key={rel.id}
-                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 group"
                               >
                                 <div className="flex items-center gap-3 flex-1">
                                   <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
@@ -2122,6 +2261,33 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                                     </div>
                                   </div>
                                 </div>
+                                {(canAddRelationships || canDeleteRelationships) && (
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {canAddRelationships && (
+                                      <button
+                                        onClick={() => setEditingRelationship(rel)}
+                                        className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded"
+                                        title="Edit relationship"
+                                      >
+                                        <Edit2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    {canDeleteRelationships && (
+                                      <button
+                                        onClick={() => handleDeleteRelationship(rel.id, `${relatedPerson.firstName} ${relatedPerson.lastName}`)}
+                                        disabled={deletingRelationship === rel.id}
+                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                                        title="Remove relationship"
+                                      >
+                                        {deletingRelationship === rel.id ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                          <X className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -2134,6 +2300,152 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
             </div>
           </div>
         )}
+      </div>
+
+      {/* Edit Relationship Modal */}
+      {editingRelationship && (
+        <EditRelationshipModal
+          relationship={editingRelationship}
+          person={person}
+          allPeople={tree.people}
+          onClose={() => setEditingRelationship(null)}
+          onSuccess={() => {
+            setEditingRelationship(null);
+            onRefresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+interface EditRelationshipModalProps {
+  relationship: Relationship;
+  person: Person;
+  allPeople: Person[];
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function EditRelationshipModal({ relationship, person, allPeople, onClose, onSuccess }: EditRelationshipModalProps) {
+  const [relationshipType, setRelationshipType] = useState<RelationshipType>(relationship.relationshipType);
+  const [notes, setNotes] = useState((relationship as any).notes || '');
+  const [birthOrder, setBirthOrder] = useState<string>((relationship as any).birthOrder?.toString() || '');
+  const [saving, setSaving] = useState(false);
+
+  // Get the related person
+  const relatedPerson = allPeople.find(p =>
+    p.id === (relationship.personFromId === person.id ? relationship.personToId : relationship.personFromId)
+  );
+
+  const relationshipTypes: RelationshipType[] = [
+    'PARENT', 'CHILD', 'SPOUSE', 'SIBLING',
+    'ADOPTIVE_PARENT', 'ADOPTIVE_CHILD',
+    'STEP_PARENT', 'STEP_CHILD',
+    'FOSTER_PARENT', 'FOSTER_CHILD',
+    'GUARDIAN', 'WARD'
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/relationships/${relationship.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          relationshipType,
+          notes: notes || undefined,
+          birthOrder: birthOrder ? parseInt(birthOrder) : undefined,
+        }),
+      });
+
+      if (response.ok) {
+        onSuccess();
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to update relationship');
+      }
+    } catch (error) {
+      console.error('Failed to update relationship:', error);
+      alert('Failed to update relationship');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Relationship</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div className="text-sm text-gray-600 mb-4">
+            Editing relationship between <strong>{person.firstName} {person.lastName}</strong> and <strong>{relatedPerson?.firstName} {relatedPerson?.lastName}</strong>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Relationship Type
+            </label>
+            <select
+              value={relationshipType}
+              onChange={(e) => setRelationshipType(e.target.value as RelationshipType)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {relationshipTypes.map(type => (
+                <option key={type} value={type}>
+                  {type.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {(relationshipType === 'CHILD' || relationshipType === 'SIBLING') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Birth Order
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={birthOrder}
+                onChange={(e) => setBirthOrder(e.target.value)}
+                placeholder="e.g., 1 for first-born"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional notes about this relationship..."
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -3727,13 +4039,25 @@ interface PersonMissingParents {
   lastName: string;
   birthDate?: string | null;
   parentCount: number;
+  missing?: string[]; // ['Father'], ['Mother'], or ['Father', 'Mother']
+  hasFather?: boolean;
+  hasMother?: boolean;
   parents: Array<{ id: string; firstName: string; lastName: string }>;
   missingCount: number;
+}
+
+interface ParentNeedingGender {
+  id: string;
+  firstName: string;
+  lastName: string;
+  gender: string;
 }
 
 function MissingParentsModal({ treeId, onClose, onSelectPerson }: MissingParentsModalProps) {
   const [loading, setLoading] = useState(true);
   const [peopleMissingParents, setPeopleMissingParents] = useState<PersonMissingParents[]>([]);
+  const [parentsNeedingGender, setParentsNeedingGender] = useState<ParentNeedingGender[]>([]);
+  const [activeTab, setActiveTab] = useState<'missing' | 'unknown'>('missing');
 
   useEffect(() => {
     fetchMissingParents();
@@ -3748,6 +4072,7 @@ function MissingParentsModal({ treeId, onClose, onSelectPerson }: MissingParents
       if (response.ok) {
         const data = await response.json();
         setPeopleMissingParents(data.data.people);
+        setParentsNeedingGender(data.data.parentsNeedingGender || []);
       }
     } catch (error) {
       console.error('Failed to fetch people missing parents:', error);
@@ -3766,9 +4091,9 @@ function MissingParentsModal({ treeId, onClose, onSelectPerson }: MissingParents
       <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">People Missing Parents</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Parent Relationship Issues</h2>
             <p className="text-sm text-gray-600 mt-1">
-              {peopleMissingParents.length} {peopleMissingParents.length === 1 ? 'person needs' : 'people need'} parent relationships
+              Fix missing or incomplete parent information
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -3776,53 +4101,133 @@ function MissingParentsModal({ treeId, onClose, onSelectPerson }: MissingParents
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="px-6 pt-4 border-b border-gray-200">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setActiveTab('missing')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'missing'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Missing Parents
+              {peopleMissingParents.length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-700">
+                  {peopleMissingParents.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('unknown')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'unknown'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Parents Need Gender
+              {parentsNeedingGender.length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-yellow-100 text-yellow-700">
+                  {parentsNeedingGender.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
             </div>
-          ) : peopleMissingParents.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <p>All people have 2 parents assigned!</p>
-            </div>
+          ) : activeTab === 'missing' ? (
+            // Missing Parents Tab
+            peopleMissingParents.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p>All people have both a father and mother assigned!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Click on a person to open their profile and add a parent relationship.
+                </p>
+                <div className="space-y-2">
+                  {peopleMissingParents.map((person) => (
+                    <div
+                      key={person.id}
+                      className="p-4 rounded-lg border cursor-pointer transition-colors border-gray-200 hover:border-blue-400 hover:bg-blue-50"
+                      onClick={() => handlePersonClick(person.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">
+                            {person.firstName} {person.lastName}
+                          </span>
+                        </div>
+                        <div className="flex gap-1">
+                          {person.missing?.includes('Father') && (
+                            <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                              Missing Father
+                            </span>
+                          )}
+                          {person.missing?.includes('Mother') && (
+                            <span className="text-xs px-2 py-1 rounded bg-pink-100 text-pink-700">
+                              Missing Mother
+                            </span>
+                          )}
+                          {!person.missing?.length && person.parentCount < 2 && (
+                            <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">
+                              {person.parentCount === 0 ? 'No parents' : '1 parent'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {person.parents.length > 0 && (
+                        <div className="mt-2 text-sm text-gray-600">
+                          Has: {person.parents.map((p: any) => `${p.firstName} ${p.lastName}${p.role ? ` (${p.role})` : ''}`).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
           ) : (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Click on a person to open their profile and add a parent relationship.
-              </p>
-              {/* List of people missing parents */}
-              <div className="space-y-2">
-                {peopleMissingParents.map((person) => (
-                  <div
-                    key={person.id}
-                    className="p-4 rounded-lg border cursor-pointer transition-colors border-gray-200 hover:border-blue-400 hover:bg-blue-50"
-                    onClick={() => handlePersonClick(person.id)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
+            // Parents Need Gender Tab
+            parentsNeedingGender.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p>All parents have their gender specified!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  These people are parents but don't have their gender set. Click to edit and set as Male (Father) or Female (Mother).
+                </p>
+                <div className="space-y-2">
+                  {parentsNeedingGender.map((person) => (
+                    <div
+                      key={person.id}
+                      className="p-4 rounded-lg border cursor-pointer transition-colors border-gray-200 hover:border-blue-400 hover:bg-blue-50"
+                      onClick={() => handlePersonClick(person.id)}
+                    >
+                      <div className="flex items-center justify-between">
                         <span className="font-medium">
                           {person.firstName} {person.lastName}
                         </span>
+                        <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">
+                          Gender: {person.gender || 'Not set'}
+                        </span>
                       </div>
-                      <span
-                        className={`text-sm px-2 py-1 rounded ${
-                          person.parentCount === 0
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                        }`}
-                      >
-                        {person.parentCount === 0 ? 'No parents' : '1 parent'}
-                      </span>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Set gender to Male or Female so they can be properly identified as Father or Mother
+                      </p>
                     </div>
-                    {person.parents.length > 0 && (
-                      <div className="mt-2 text-sm text-gray-600">
-                        Current parent: {person.parents.map((p) => `${p.firstName} ${p.lastName}`).join(', ')}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )
           )}
         </div>
 
