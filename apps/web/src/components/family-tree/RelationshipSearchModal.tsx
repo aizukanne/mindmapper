@@ -8,7 +8,7 @@
  * - "half-brother"
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Search,
@@ -18,14 +18,14 @@ import {
 } from 'lucide-react';
 import { useRelationshipSearch } from '../../hooks/useComputedRelationship';
 import { RelationshipBadge } from './RelationshipBadge';
-import type { PersonSummary, ComputedRelationship } from '../../lib/relationship-api';
+import type { PersonSummary } from '../../lib/relationship-api';
 
 interface Person {
   id: string;
   firstName: string;
   lastName: string;
   gender?: string;
-  profilePhoto?: string;
+  profilePhoto?: string | null;
 }
 
 interface RelationshipSearchModalProps {

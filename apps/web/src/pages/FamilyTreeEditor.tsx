@@ -11,6 +11,9 @@ import { FamilyTreeCanvas } from '@/components/tree/FamilyTreeCanvas';
 import { PhotoGallery } from '@/components/tree/PhotoGallery';
 import { HowAreWeRelatedModal } from '@/components/family-tree/HowAreWeRelatedModal';
 import { RelationshipSearchModal } from '@/components/family-tree/RelationshipSearchModal';
+import { useImmediateFamily, useComputedRelationship } from '@/hooks/useComputedRelationship';
+import { useLinkedPerson } from '@/hooks/useLinkedPerson';
+import { RelationshipBadge } from '@/components/family-tree/RelationshipBadge';
 import { calculateAge } from '@/lib/dateUtils';
 import type { FamilyTree, Person, Relationship, RelationshipType, TreeRole, TreePhoto } from '@mindmapper/types';
 
@@ -84,6 +87,9 @@ export default function FamilyTreeEditor() {
     userRole,
     isCreator,
   });
+
+  // Get linked person ("me" in this tree)
+  const { linkedPerson } = useLinkedPerson(treeId || '');
 
   useEffect(() => {
     if (treeId) {
@@ -537,7 +543,27 @@ export default function FamilyTreeEditor() {
                           </span>
                           <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-700">
                             Gen {person.generation}
+                            {linkedPerson && linkedPerson.id !== person.id && (
+                              <span className={`ml-1 ${
+                                person.generation < linkedPerson.generation
+                                  ? 'text-green-600'
+                                  : person.generation > linkedPerson.generation
+                                  ? 'text-blue-600'
+                                  : 'text-gray-500'
+                              }`}>
+                                ({person.generation === linkedPerson.generation
+                                  ? 'same'
+                                  : person.generation < linkedPerson.generation
+                                  ? `+${linkedPerson.generation - person.generation}`
+                                  : `${linkedPerson.generation - person.generation}`})
+                              </span>
+                            )}
                           </span>
+                          {linkedPerson && linkedPerson.id === person.id && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                              You
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -575,6 +601,7 @@ export default function FamilyTreeEditor() {
         <PersonDetailModal
           person={selectedPerson}
           tree={tree}
+          linkedPerson={linkedPerson}
           onClose={() => setSelectedPerson(null)}
           onAddRelationship={() => {
             setIsAddRelationshipModalOpen(true);
@@ -1001,9 +1028,17 @@ function AddPersonModal({ onClose, onSubmit }: AddPersonModalProps) {
   );
 }
 
+interface LinkedPersonData {
+  id: string;
+  firstName: string;
+  lastName: string;
+  generation: number;
+}
+
 interface PersonDetailModalProps {
   person: PersonWithRelationships;
   tree: FamilyTreeWithData;
+  linkedPerson?: LinkedPersonData | null;
   onClose: () => void;
   onAddRelationship: () => void;
   onAddChild: () => void;
@@ -1017,7 +1052,7 @@ interface PersonDetailModalProps {
   canDeleteRelationships: boolean;
 }
 
-function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChild, onAddSpouse, onAddSibling, onRefresh, canAddRelationships, canAddAncestors, canAddDescendants, canEditPeople, canDeleteRelationships }: PersonDetailModalProps) {
+function PersonDetailModal({ person, tree, linkedPerson, onClose, onAddRelationship, onAddChild, onAddSpouse, onAddSibling, onRefresh, canAddRelationships, canAddAncestors, canAddDescendants, canEditPeople, canDeleteRelationships }: PersonDetailModalProps) {
   const [updatingPrivacy, setUpdatingPrivacy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1027,6 +1062,18 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
   const [selectedPhoto, setSelectedPhoto] = useState<TreePhoto | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Fetch computed immediate family relationships
+  const { family: immediateFamily, isLoading: loadingFamily } = useImmediateFamily({ treeId: tree.id, personId: person.id });
+
+  // Compute relationship to the linked person ("me")
+  const isNotSelf = linkedPerson && linkedPerson.id !== person.id;
+  const { relationship: relationshipToMe, isLoading: loadingRelationshipToMe } = useComputedRelationship({
+    treeId: tree.id,
+    personAId: person.id,
+    personBId: linkedPerson?.id,
+    enabled: !!isNotSelf,
+  });
 
   // Check if person has an active (non-divorced) spouse
   const existingSpouseIds = tree.relationships
@@ -1815,6 +1862,21 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                   </span>
                   <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
                     Generation {person.generation}
+                    {linkedPerson && linkedPerson.id !== person.id && (
+                      <span className={`ml-1 ${
+                        person.generation < linkedPerson.generation
+                          ? 'text-green-600'
+                          : person.generation > linkedPerson.generation
+                          ? 'text-blue-600'
+                          : 'text-gray-500'
+                      }`}>
+                        ({person.generation === linkedPerson.generation
+                          ? 'same'
+                          : person.generation < linkedPerson.generation
+                          ? `+${linkedPerson.generation - person.generation}`
+                          : `${linkedPerson.generation - person.generation}`})
+                      </span>
+                    )}
                   </span>
                   <span className={`text-xs px-2 py-1 rounded ${
                     person.isLiving ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
@@ -1837,6 +1899,48 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
                 </div>
               </div>
             </div>
+
+            {/* Relationship to You (linked person) */}
+            {linkedPerson && linkedPerson.id !== person.id && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-1">Relationship to You</h4>
+                    <p className="text-xs text-gray-500">
+                      How {person.firstName} is related to {linkedPerson.firstName} {linkedPerson.lastName}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {loadingRelationshipToMe ? (
+                      <span className="text-xs text-gray-400">Computing...</span>
+                    ) : relationshipToMe?.isRelated ? (
+                      <RelationshipBadge relationship={relationshipToMe} size="lg" />
+                    ) : (
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-500">
+                        Not directly related
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {relationshipToMe?.isRelated && relationshipToMe.generationDifference !== undefined && relationshipToMe.generationDifference !== 0 && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {Math.abs(relationshipToMe.generationDifference)} generation{Math.abs(relationshipToMe.generationDifference) > 1 ? 's' : ''} {relationshipToMe.generationDifference > 0 ? 'older' : 'younger'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Self indicator */}
+            {linkedPerson && linkedPerson.id === person.id && (
+              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-4">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">
+                    This is you
+                  </span>
+                  <span className="text-sm text-gray-600">You are linked to this person in the family tree</span>
+                </div>
+              </div>
+            )}
 
             {/* Life Events */}
             {(person.birthDate || person.deathDate) && (
@@ -1899,6 +2003,77 @@ function PersonDetailModal({ person, tree, onClose, onAddRelationship, onAddChil
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2">Biography</h4>
                 <p className="text-sm text-gray-600 whitespace-pre-wrap">{person.biography}</p>
+              </div>
+            )}
+
+            {/* Computed Immediate Family */}
+            {immediateFamily && !loadingFamily && (
+              <div className="border-t border-gray-200 pt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Computed Family</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Parents */}
+                  {immediateFamily.parents && immediateFamily.parents.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-500 uppercase">Parents</p>
+                      {immediateFamily.parents.map((parent) => (
+                        <div key={parent.id} className="flex items-center gap-2">
+                          <span className="text-sm text-gray-800">{parent.firstName} {parent.lastName}</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                            {parent.relationshipLabel}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Spouses */}
+                  {immediateFamily.spouses && immediateFamily.spouses.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-500 uppercase">Spouses</p>
+                      {immediateFamily.spouses.map((spouse) => (
+                        <div key={spouse.id} className="flex items-center gap-2">
+                          <span className="text-sm text-gray-800">{spouse.firstName} {spouse.lastName}</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                            Spouse
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Siblings */}
+                  {immediateFamily.siblings && immediateFamily.siblings.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-500 uppercase">Siblings</p>
+                      {immediateFamily.siblings.map((sibling) => (
+                        <div key={sibling.id} className="flex items-center gap-2">
+                          <span className="text-sm text-gray-800">{sibling.firstName} {sibling.lastName}</span>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium border ${
+                            sibling.siblingType === 'full'
+                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              : sibling.siblingType === 'half'
+                              ? 'bg-teal-50 text-teal-700 border-teal-200'
+                              : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          }`}>
+                            {sibling.siblingType === 'full' ? 'Sibling' : sibling.siblingType === 'half' ? 'Half-sibling' : 'Step-sibling'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Children */}
+                  {immediateFamily.children && immediateFamily.children.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-500 uppercase">Children</p>
+                      {immediateFamily.children.map((child) => (
+                        <div key={child.id} className="flex items-center gap-2">
+                          <span className="text-sm text-gray-800">{child.firstName} {child.lastName}</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            {child.relationshipLabel}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

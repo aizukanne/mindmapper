@@ -3,6 +3,13 @@ import { User, Heart, Shield, Lock, Eye, Baby } from 'lucide-react';
 import type { Person } from '@mindmapper/types';
 import { calculateAge } from '@/lib/dateUtils';
 
+interface LinkedPersonData {
+  id: string;
+  firstName: string;
+  lastName: string;
+  generation: number;
+}
+
 export interface PersonCardProps {
   person: Person;
   width: number;
@@ -11,6 +18,7 @@ export interface PersonCardProps {
   isHighlighted?: boolean;
   hasSpouse?: boolean;
   hasChildren?: boolean;
+  linkedPerson?: LinkedPersonData | null;
   onClick?: (person: Person) => void;
   onDoubleClick?: (person: Person) => void;
 }
@@ -68,6 +76,7 @@ function PersonCardComponent({
   isHighlighted = false,
   hasSpouse = false,
   hasChildren = false,
+  linkedPerson,
   onClick,
   onDoubleClick,
 }: PersonCardProps) {
@@ -161,6 +170,25 @@ function PersonCardComponent({
 
           {/* Relationship indicators */}
           <div data-testid="person-card-indicators" className="flex items-center gap-1 mt-1">
+            {linkedPerson && linkedPerson.id === person.id && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">
+                You
+              </span>
+            )}
+            {linkedPerson && linkedPerson.id !== person.id && person.generation !== linkedPerson.generation && (
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                  person.generation < linkedPerson.generation
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}
+                title={`${Math.abs(linkedPerson.generation - person.generation)} generation${Math.abs(linkedPerson.generation - person.generation) > 1 ? 's' : ''} ${person.generation < linkedPerson.generation ? 'older' : 'younger'} than you`}
+              >
+                {person.generation < linkedPerson.generation
+                  ? `+${linkedPerson.generation - person.generation}`
+                  : `${linkedPerson.generation - person.generation}`}
+              </span>
+            )}
             {hasSpouse && (
               <span data-testid="person-card-spouse-indicator" title="Has spouse">
                 <Heart className="w-3 h-3 text-rose-500" />

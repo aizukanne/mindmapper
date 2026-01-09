@@ -127,7 +127,7 @@ export function FamilyTreeCanvas({
   });
 
   // Drag-and-drop hook for person cards
-  const handlePositionChange = useCallback(async (personId: string, position: { x: number; y: number }) => {
+  const handlePositionChange = useCallback(async (_personId: string, _position: { x: number; y: number }) => {
     // Position is already saved in store by the hook
     // Optionally sync to API here
   }, []);
@@ -380,59 +380,75 @@ export function FamilyTreeCanvas({
 
       {/* Settings Panel */}
       {showSettings && (
-        <div className="absolute top-16 left-4 z-20 bg-white rounded-lg shadow-md p-3">
-          <h3 className="text-sm font-medium mb-2 text-gray-700">Line Style</h3>
+        <div className="absolute top-16 left-4 z-20 bg-white rounded-lg shadow-lg p-3 border border-gray-100">
+          <h3 className="text-xs font-medium mb-2 text-gray-500">Line Style</h3>
           <div className="flex gap-2">
             {/* Straight line icon */}
             <button
               onClick={() => setConnectionLineStyle('straight')}
-              className={`p-2 rounded-lg border-2 transition-colors ${
+              className={`p-2 rounded-lg border-2 transition-all ${
                 connectionLineStyle === 'straight'
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  : 'border-gray-200 hover:border-gray-300'
               }`}
               title="Straight"
             >
-              <svg width="32" height="32" viewBox="0 0 32 32" className="text-gray-600">
-                <circle cx="6" cy="8" r="3" fill="currentColor" opacity="0.3" />
-                <circle cx="26" cy="24" r="3" fill="currentColor" opacity="0.3" />
-                <line x1="6" y1="11" x2="26" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <svg width="36" height="24" viewBox="0 0 36 24">
+                <circle cx="4" cy="4" r="2.5" fill="none" stroke={connectionLineStyle === 'straight' ? '#3B82F6' : '#6B7280'} strokeWidth="1.5" />
+                <circle cx="32" cy="20" r="2.5" fill="none" stroke={connectionLineStyle === 'straight' ? '#3B82F6' : '#6B7280'} strokeWidth="1.5" />
+                <line
+                  x1="6.5" y1="5.4" x2="29.5" y2="18.6"
+                  stroke={connectionLineStyle === 'straight' ? '#3B82F6' : '#6B7280'}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
 
             {/* Orthogonal line icon */}
             <button
               onClick={() => setConnectionLineStyle('orthogonal')}
-              className={`p-2 rounded-lg border-2 transition-colors ${
+              className={`p-2 rounded-lg border-2 transition-all ${
                 connectionLineStyle === 'orthogonal'
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  : 'border-gray-200 hover:border-gray-300'
               }`}
               title="Orthogonal"
             >
-              <svg width="32" height="32" viewBox="0 0 32 32" className="text-gray-600">
-                <circle cx="6" cy="8" r="3" fill="currentColor" opacity="0.3" />
-                <circle cx="26" cy="24" r="3" fill="currentColor" opacity="0.3" />
-                <path d="M 6 11 L 6 16 Q 6 18 8 18 L 24 18 Q 26 18 26 20 L 26 21"
-                      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <svg width="36" height="24" viewBox="0 0 36 24">
+                <circle cx="4" cy="4" r="2.5" fill="none" stroke={connectionLineStyle === 'orthogonal' ? '#3B82F6' : '#6B7280'} strokeWidth="1.5" />
+                <circle cx="32" cy="20" r="2.5" fill="none" stroke={connectionLineStyle === 'orthogonal' ? '#3B82F6' : '#6B7280'} strokeWidth="1.5" />
+                <path
+                  d="M 4 6.5 L 4 12 L 32 12 L 32 17.5"
+                  fill="none"
+                  stroke={connectionLineStyle === 'orthogonal' ? '#3B82F6' : '#6B7280'}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </button>
 
             {/* Curved line icon */}
             <button
               onClick={() => setConnectionLineStyle('curved')}
-              className={`p-2 rounded-lg border-2 transition-colors ${
+              className={`p-2 rounded-lg border-2 transition-all ${
                 connectionLineStyle === 'curved'
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  : 'border-gray-200 hover:border-gray-300'
               }`}
               title="Curved"
             >
-              <svg width="32" height="32" viewBox="0 0 32 32" className="text-gray-600">
-                <circle cx="6" cy="8" r="3" fill="currentColor" opacity="0.3" />
-                <circle cx="26" cy="24" r="3" fill="currentColor" opacity="0.3" />
-                <path d="M 6 11 C 6 18, 26 14, 26 21"
-                      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <svg width="36" height="24" viewBox="0 0 36 24">
+                <circle cx="4" cy="4" r="2.5" fill="none" stroke={connectionLineStyle === 'curved' ? '#3B82F6' : '#6B7280'} strokeWidth="1.5" />
+                <circle cx="32" cy="20" r="2.5" fill="none" stroke={connectionLineStyle === 'curved' ? '#3B82F6' : '#6B7280'} strokeWidth="1.5" />
+                <path
+                  d="M 4 6.5 C 4 14, 32 10, 32 17.5"
+                  fill="none"
+                  stroke={connectionLineStyle === 'curved' ? '#3B82F6' : '#6B7280'}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
           </div>
@@ -603,6 +619,7 @@ export function FamilyTreeCanvas({
                     isHighlighted={highlightedPersonIds.includes(node.id)}
                     hasSpouse={spouseMap.has(node.id)}
                     hasChildren={childrenMap.has(node.id)}
+                    linkedPerson={linkedPerson}
                     onClick={handlePersonClick}
                     onDoubleClick={handlePersonDoubleClick}
                   />

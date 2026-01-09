@@ -7820,13 +7820,21 @@ familyTreesRouter.get('/:treeId/people-missing-parents', async (req, res, next) 
 
     await checkTreeAccess(treeId, userId, 'VIEWER');
 
-    // Get all people and relationships
+    // Get all people and relationships (all parent/child type relationships)
+    // Parent types: PARENT, ADOPTIVE_PARENT, STEP_PARENT, FOSTER_PARENT, GUARDIAN
+    // Child types: CHILD, ADOPTIVE_CHILD, STEP_CHILD, FOSTER_CHILD, WARD
+    const parentTypes = ['PARENT', 'ADOPTIVE_PARENT', 'STEP_PARENT', 'FOSTER_PARENT', 'GUARDIAN'];
+    const childTypes = ['CHILD', 'ADOPTIVE_CHILD', 'STEP_CHILD', 'FOSTER_CHILD', 'WARD'];
+    const allParentChildTypes = [...parentTypes, ...childTypes];
+
     const tree = await prisma.familyTree.findFirst({
       where: { id: treeId },
       include: {
         people: true,
         relationships: {
-          where: { relationshipType: 'CHILD' },
+          where: {
+            relationshipType: { in: allParentChildTypes }
+          },
         },
       },
     });
@@ -7835,37 +7843,85 @@ familyTreesRouter.get('/:treeId/people-missing-parents', async (req, res, next) 
       throw new AppError(404, 'Tree not found');
     }
 
-    // Build a map of child -> parents count
-    const childToParentsCount = new Map<string, number>();
-    const childToParents = new Map<string, string[]>();
+    // Build a map of person -> parents by gender (father/mother)
+    // Child-type relationships: personFromId is parent, personToId is child
+    // Parent-type relationships: personFromId is child, personToId is parent
+    const childToFathers = new Map<string, Set<string>>(); // Male parents
+    const childToMothers = new Map<string, Set<string>>(); // Female parents
+    const childToUnknownParents = new Map<string, Set<string>>(); // Unknown gender parents
 
-    for (const rel of tree.relationships) {
-      const childId = rel.personToId;
-      const parentId = rel.personFromId;
-
-      if (!childToParentsCount.has(childId)) {
-        childToParentsCount.set(childId, 0);
-        childToParents.set(childId, []);
-      }
-      childToParentsCount.set(childId, childToParentsCount.get(childId)! + 1);
-      childToParents.get(childId)!.push(parentId);
+    // Create a lookup for person gender
+    const personGender = new Map<string, string>();
+    for (const person of tree.people) {
+      personGender.set(person.id, person.gender || 'UNKNOWN');
     }
 
-    // Find people who don't have exactly 2 parents
+    for (const rel of tree.relationships) {
+      let childId: string;
+      let parentId: string;
+
+      if (childTypes.includes(rel.relationshipType)) {
+        // CHILD-type relationship: from=parent, to=child
+        childId = rel.personToId;
+        parentId = rel.personFromId;
+      } else {
+        // PARENT-type relationship: from=child, to=parent
+        childId = rel.personFromId;
+        parentId = rel.personToId;
+      }
+
+      const parentGender = personGender.get(parentId) || 'UNKNOWN';
+
+      if (parentGender === 'MALE') {
+        if (!childToFathers.has(childId)) {
+          childToFathers.set(childId, new Set());
+        }
+        childToFathers.get(childId)!.add(parentId);
+      } else if (parentGender === 'FEMALE') {
+        if (!childToMothers.has(childId)) {
+          childToMothers.set(childId, new Set());
+        }
+        childToMothers.get(childId)!.add(parentId);
+      } else {
+        if (!childToUnknownParents.has(childId)) {
+          childToUnknownParents.set(childId, new Set());
+        }
+        childToUnknownParents.get(childId)!.add(parentId);
+      }
+    }
+
+    // Find people who don't have both a father and a mother
     const peopleMissingParents = tree.people
       .filter((p) => {
-        const parentCount = childToParentsCount.get(p.id) || 0;
-        return parentCount < 2;
+        const fatherCount = childToFathers.get(p.id)?.size || 0;
+        const motherCount = childToMothers.get(p.id)?.size || 0;
+        // Missing if no father OR no mother
+        return fatherCount === 0 || motherCount === 0;
       })
       .map((p) => {
-        const parentCount = childToParentsCount.get(p.id) || 0;
-        const parentIds = childToParents.get(p.id) || [];
-        const parents = parentIds.map((pid) => {
+        const fatherIds = childToFathers.get(p.id) || new Set<string>();
+        const motherIds = childToMothers.get(p.id) || new Set<string>();
+        const unknownIds = childToUnknownParents.get(p.id) || new Set<string>();
+
+        const hasFather = fatherIds.size > 0;
+        const hasMother = motherIds.size > 0;
+        const parentCount = (hasFather ? 1 : 0) + (hasMother ? 1 : 0);
+
+        // Collect all parent info
+        const allParentIds = new Set([...fatherIds, ...motherIds, ...unknownIds]);
+        const parents = Array.from(allParentIds).map((pid) => {
           const parent = tree.people.find((pp) => pp.id === pid);
+          const gender = personGender.get(pid) || 'UNKNOWN';
+          const role = gender === 'MALE' ? 'Father' : gender === 'FEMALE' ? 'Mother' : 'Parent';
           return parent
-            ? { id: pid, firstName: parent.firstName, lastName: parent.lastName }
-            : { id: pid, firstName: 'Unknown', lastName: '' };
+            ? { id: pid, firstName: parent.firstName, lastName: parent.lastName, role }
+            : { id: pid, firstName: 'Unknown', lastName: '', role };
         });
+
+        // Determine what's missing
+        const missing: string[] = [];
+        if (!hasFather) missing.push('Father');
+        if (!hasMother) missing.push('Mother');
 
         return {
           id: p.id,
@@ -7875,15 +7931,40 @@ familyTreesRouter.get('/:treeId/people-missing-parents', async (req, res, next) 
           parentCount,
           parents,
           missingCount: 2 - parentCount,
+          missing, // Array of what's missing: ['Father'], ['Mother'], or ['Father', 'Mother']
+          hasFather,
+          hasMother,
         };
       })
       .sort((a, b) => b.missingCount - a.missingCount); // Sort by most missing first
+
+    // Find all unique parent IDs with unknown gender
+    const allParentIds = new Set<string>();
+    for (const rel of tree.relationships) {
+      if (childTypes.includes(rel.relationshipType)) {
+        allParentIds.add(rel.personFromId);
+      } else if (parentTypes.includes(rel.relationshipType)) {
+        allParentIds.add(rel.personToId);
+      }
+    }
+
+    // Get parents with unknown gender that need to be corrected
+    const parentsWithUnknownGender = tree.people
+      .filter((p) => allParentIds.has(p.id) && (!p.gender || p.gender === 'UNKNOWN' || p.gender === 'OTHER'))
+      .map((p) => ({
+        id: p.id,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        gender: p.gender || 'UNKNOWN',
+      }));
 
     res.json({
       success: true,
       data: {
         total: peopleMissingParents.length,
         people: peopleMissingParents,
+        parentsNeedingGender: parentsWithUnknownGender,
+        parentsNeedingGenderCount: parentsWithUnknownGender.length,
       },
     });
   } catch (error) {

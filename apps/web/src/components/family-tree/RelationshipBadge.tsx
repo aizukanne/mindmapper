@@ -174,7 +174,7 @@ export function RelationshipBadge({
   onClick,
 }: RelationshipBadgeProps) {
   // Handle the case where there's no relationship
-  if (!relationship.isRelated && 'isRelated' in relationship) {
+  if ('isRelated' in relationship && !relationship.isRelated) {
     return (
       <span
         className={`
@@ -246,7 +246,6 @@ export function RelationshipBadgeDetailed({
   className?: string;
 }) {
   const colors = getBadgeColors(relationship);
-  const displayName = relationship.displayName || relationship.type || 'Related';
 
   // Build detail string
   const details: string[] = [];

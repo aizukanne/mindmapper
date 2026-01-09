@@ -20,15 +20,15 @@ import {
 } from 'lucide-react';
 import { useComputedRelationship } from '../../hooks/useComputedRelationship';
 import { getRelationshipPaths, getCommonAncestors } from '../../lib/relationship-api';
-import { RelationshipBadge, RelationshipBadgeDetailed } from './RelationshipBadge';
-import type { PersonSummary, CommonAncestor, RelationshipPath } from '../../lib/relationship-api';
+import { RelationshipBadgeDetailed } from './RelationshipBadge';
+import type { CommonAncestor, RelationshipPath } from '../../lib/relationship-api';
 
 interface Person {
   id: string;
   firstName: string;
   lastName: string;
   gender?: string;
-  profilePhoto?: string;
+  profilePhoto?: string | null;
 }
 
 interface HowAreWeRelatedModalProps {

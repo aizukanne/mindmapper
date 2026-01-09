@@ -3,7 +3,7 @@
 **Project:** Comprehensive Relationship Computation Engine
 **Design Document:** `/design/relationship-model-architecture.md`
 **Created:** 2026-01-08
-**Status:** Phase 5 Complete - All Core Phases Done
+**Status:** Complete - All Phases Done (100%)
 
 ---
 
@@ -13,10 +13,10 @@
 |-------|-------|-----------|----------|
 | Phase 1: Core Engine | 18 | 18 | 100% |
 | Phase 2: API Integration | 12 | 12 | 100% |
-| Phase 3: UI Integration | 10 | 8 | 80% |
+| Phase 3: UI Integration | 10 | 10 | 100% |
 | Phase 4: Optimization | 8 | 8 | 100% |
 | Phase 5: Testing & QA | 10 | 10 | 100% |
-| **Total** | **58** | **56** | **97%** |
+| **Total** | **58** | **58** | **100%** |
 
 ---
 
@@ -191,9 +191,9 @@
 - [x] Wire up HowAreWeRelatedModal
 - [x] Wire up RelationshipSearchModal
 
-### 3.5 Deferred Items
-- [ ] Update PersonDetailModal to show computed relationship name (future enhancement)
-- [ ] Layout updates for computed generations (optional, current layout works well)
+### 3.5 Previously Deferred Items (Now Complete)
+- [x] Update PersonDetailModal to show computed relationship name to linked person
+- [x] Layout updates for computed generations (relative generation indicators)
 
 ---
 
@@ -331,4 +331,5 @@
 | 2026-01-08 | Phase 3 complete - UI integration | Claude |
 | 2026-01-08 | Phase 4 complete - Optimization (LRU cache, batch ops, DB indexes) | Claude |
 | 2026-01-08 | Phase 5 complete - Testing & QA (256 tests, all passing) | Claude |
+| 2026-01-09 | Phase 3 deferred items complete - PersonDetailModal relationship display & relative generation indicators | Claude |
 
